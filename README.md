@@ -4,10 +4,10 @@ Develop an variational inference algorithm based on [Black Box Variational Infer
 
 ## Steps
 
-1. Start writing a simple model container 
+1. Start writing a simple model container
 2. Implement the algo
 
-## Literature 
+## Literature
 
 - [Black Box Variational Inference](https://proceedings.mlr.press/v33/ranganath14.pdf)
 - [Variational Inference](https://arxiv.org/pdf/1601.00670.pdf)
@@ -15,10 +15,10 @@ Develop an variational inference algorithm based on [Black Box Variational Infer
 
 ## Dev-Notes
 
-### Coding Style 
+### Coding Style
 
 Follow the [Google `Python` Style Guide](https://google.github.io/styleguide/pyguide.html).
 
 ### `precommit`
 
-Use the [pre-commit](https://pre-commit.com/) system library. TODO: set up hooks for pre-commit
+Use the [pre-commit](https://pre-commit.com/) system library.

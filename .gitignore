@@ -1,0 +1,8 @@
+# MacOS
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ignore data directory
+data
