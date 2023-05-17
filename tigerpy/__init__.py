@@ -1,5 +1,5 @@
 """
-Import sub modules
+Import sub modules.
 """
 
 from .__version__ import __version__, __version_info__
