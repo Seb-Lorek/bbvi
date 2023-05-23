@@ -2,18 +2,18 @@
 Model container.
 """
 
+import jax.numpy as jnp
+from jax import jit
 import numpy as np
-import jax
-
 from typing import Any, Union
 
 import tensorflow_probability.substrates.jax.distributions as tfjd
 import tensorflow_probability.substrates.numpy.distributions as tfnd
 
-from .observation import Obs
-
 Array = Any
 Distribution = Union[tfjd.Distribution, tfnd.Distribution]
+
+from .observation import Obs
 
 class Model:
     """
@@ -21,11 +21,11 @@ class Model:
     """
 
     def __init__(self, y: Array, distribution: Distribution) -> None:
-        self.y = np.asarray(y, dtype=np.float32)
+        self.y = jnp.asarray(y, dtype=jnp.float32)
         self.y_dist = distribution
         self.log_lik = self.loglik()
-        self.log_prior = None
-        self.log_prob = None
+        self.log_prior = self.logprior()
+        self.log_prob = self.logprob()
         self.residuals = None
 
     # compute log-likelihood
@@ -55,11 +55,23 @@ class Model:
             Array: The log-prior of the model.
         """
 
-        # define the log-prior of the model
-        self.log_prior = 0
-        # self.log_prior = self.y_dist.
+        # obtain log-probs of the model
+        x = jnp.array([], dtype=jnp.float32)
+        for kw1, input1 in self.y_dist.kwinputs.items():
+            if isinstance(input1, Lpred):
+                for kw2, input2 in input1.kwinputs.items():
+                    x = jnp.append(x, input2.log_prob)
+            elif isinstance(input1, Param):
+                x = jnp.append(x, input1.log_prob)
+
+        # sum all the log-priors of the model
+        self.log_prior = jnp.sum(x)
 
         return self.log_prior
+
+    # sum log-likelihood and log-prior i.e. the joint log-probability of the model.
+    def logprob(self) -> Array:
+        return jnp.sum(self.log_lik) + self.log_prior
 
 # define hyperparameters currently no latent variables except model coefficients
 class Var:
@@ -104,11 +116,11 @@ class Param:
     """
 
     def __init__(self, value: Array, distribution: Distribution, function: Any = None, name: str = "") -> None:
-        self.value = np.asarray(value, dtype=np.float32)
+        self.value = np.asarray(value, dtype=jnp.float32)
         self.distribution = distribution
         self.function = function
         self.name = name
-        self.log_prob = None
+        self.log_prob = self.distribution.init_dist().log_prob(self.value)
 
 class Lpred:
     """
@@ -120,15 +132,25 @@ class Lpred:
         self.function = function
         self.name = name
         self.kwinputs = kwinputs
-        self.value = self.update()
+        self.X_matrix = jnp.asarray(self.X.X, dtype=jnp.float32)
+        self.param_value = self.update_params()
+        self.value = self.update_lpred()
 
-    def update(self):
-        param = np.array([])
+    def update_params(self):
+        x = jnp.array([], dtype=jnp.float32)
         for kw, input in self.kwinputs.items():
-            param = np.append(param, input.value)
-        nu = jax.numpy.dot(self.X.X, param)
+            x = jnp.append(x, input.value)
+        return x
+
+    def update_lpred(self):
+        nu = calc(self.X_matrix, self.param_value)
         if self.function is not None:
             m = self.function(nu)
             return m
         else:
             return nu
+
+# calculate dot products
+@jit
+def calc(X: Array, param: Array) -> Array:
+    return jnp.dot(X, param)

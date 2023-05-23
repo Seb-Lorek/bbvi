@@ -9,3 +9,6 @@ data
 
 # ignore the Byte-compiled files
 __pycache__/
+
+# ignore quarto directory
+quarto
