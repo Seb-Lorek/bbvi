@@ -4,7 +4,11 @@ Model matrices.
 
 import numpy as np
 from scipy.interpolate import BSpline as bs
-from typing import Any
+
+from .model import (
+    Array,
+    Any)
+
 
 Array = Any
 
@@ -43,7 +47,7 @@ class Obs:
         else:
             self.X_fixed = X
 
-        if self.X == None:
+        if self.X is None:
             self.X = self.X_fixed.copy()
         else:
             self.X = np.column_stack((self.X, self.X_fixed))
@@ -66,11 +70,11 @@ class Obs:
 
         knots = np.linspace(x.min(), x.max(), num=n_knots)
 
-        self.X_smooth = bs.design_matrix(x, t=knots, k=degree, extrapolate=True)
+        self.X_smooth = bs.design_matrix(x, t=knots, k=degree, extrapolate=True).toarray()
         self.knots_smooth = knots
         self.order_smooth = rwk
 
-        if self.X == None:
+        if self.X is None:
             self.X = self.X_smooth
         else:
             self.X = np.column_stack((self.X, self.X_smooth))

@@ -1,9 +1,11 @@
 """
-Model container.
+Tiger model.
 """
 
-import jax.numpy as jnp
 from jax import jit
+import jax.numpy as jnp
+from jax.tree_util import tree_flatten, tree_unflatten
+
 import numpy as np
 from typing import Any, Union
 
@@ -17,7 +19,7 @@ from .observation import Obs
 
 class Model:
     """
-    A static model.
+    Static model.
     """
 
     def __init__(self, y: Array, distribution: Distribution) -> None:
@@ -26,6 +28,7 @@ class Model:
         self.log_lik = self.loglik()
         self.log_prior = self.logprior()
         self.log_prob = self.logprob()
+        self.num_param = self.countparam()
         self.residuals = None
 
     # compute log-likelihood
@@ -38,10 +41,9 @@ class Model:
         Returns:
             Array: The log-likelihood of the model.
         """
+        log_lik = self.y_dist.init_dist().log_prob(self.y)
 
-        self.log_lik = self.y_dist.init_dist().log_prob(self.y)
-
-        return self.log_lik
+        return log_lik
 
     # compute log-prior
     def logprior(self) -> Array:
@@ -55,29 +57,63 @@ class Model:
             Array: The log-prior of the model.
         """
 
-        # obtain log-probs of the model
-        x = jnp.array([], dtype=jnp.float32)
+        arrays = []
         for kw1, input1 in self.y_dist.kwinputs.items():
             if isinstance(input1, Lpred):
                 for kw2, input2 in input1.kwinputs.items():
-                    x = jnp.append(x, input2.log_prob)
+                    arrays.append(input2.log_prob)
             elif isinstance(input1, Param):
-                x = jnp.append(x, input1.log_prob)
+               arrays.append(input1.log_prob)
 
-        # sum all the log-priors of the model
-        self.log_prior = jnp.sum(x)
+        # flatten the arrays
+        flat_arrays, _ = tree_flatten(arrays)
 
-        return self.log_prior
+        # concatenate the flattened arrays
+        x = jnp.concatenate(flat_arrays)
+
+        # sum all the log-priors of the model and return sum
+        return jnp.sum(x)
 
     # sum log-likelihood and log-prior i.e. the joint log-probability of the model.
     def logprob(self) -> Array:
         return jnp.sum(self.log_lik) + self.log_prior
 
+    # update the logprob with Monte Carlo sample of the variational distribution
+    def update_graph(self, sample: dict) -> Array:
+        for kw1, input1 in self.y_dist.kwinputs.items():
+            if isinstance(input1, Lpred):
+                for kw2, input2 in input1.kwinputs.items():
+                    input2.value = sample[kw2]
+                    input2.log_prob = input2.logprob(value=sample[kw2])
+                input1.param_value = input1.update_params()
+                input1.value = input1.update_lpred()
+            elif isinstance(input1, Param):
+                input1.value = sample[kw1]
+                input1.log_prob = input1.logprob(value=sample[kw1])
+
+        self.log_lik = self.loglik()
+        self.log_prior = self.logprior()
+        self.log_prob = self.logprob()
+
+        return self.log_prob
+
+    # count the number of parameters in the model
+    def countparam(self) -> int:
+        count = 0
+        for kw1, input1 in self.y_dist.kwinputs.items():
+            if isinstance(input1, Lpred):
+                for kw2, input2 in input1.kwinputs.items():
+                    count += input2.dim[0]
+            elif isinstance(input1, Param):
+                count += input1.dim[0]
+        return count
+
 # define hyperparameters currently no latent variables except model coefficients
-class Var:
+class Hyper:
     """
-    Hyperparameters.
+    Hyperparameter.
     """
+
     def __init__(self, value: Array, name: str = "") -> None:
         self.value = value
         self.name = name
@@ -85,16 +121,15 @@ class Var:
     def __repr__(self) -> str:
         return f'{type(self).__name__}(name="{self.name}")'
 
-# class to set the distributions of the variables (priors)
+# class to set the distributions of the parameters (priors)
 class Dist:
     """
-    Distribution of the variables.
+    Distribution of a parameter.
     """
 
-    def __init__(self, distribution: Distribution, name: str = "", *inputs: Any, **kwinputs: Any):
+    def __init__(self, distribution: Distribution, name: str = "", **kwinputs: Any):
         self.distribution = distribution
         self.name = name
-        self.inputs = inputs
         self.kwinputs = kwinputs
 
     def init_dist(self) -> Distribution:
@@ -105,26 +140,31 @@ class Dist:
             Dist: A tensorflow probability.
         """
 
-        args = [input.value for input in self.inputs]
         kwargs = {kw: input.value for kw, input in self.kwinputs.items()}
-        dist = self.distribution(*args, **kwargs)
+        dist = self.distribution(**kwargs)
         return dist
 
+# class to initialize the parameters
 class Param:
     """
-    Class to define parameters and initial values and a distribition.
+    Parameter.
     """
 
     def __init__(self, value: Array, distribution: Distribution, function: Any = None, name: str = "") -> None:
-        self.value = np.asarray(value, dtype=jnp.float32)
+        self.value = jnp.atleast_1d(value)
+        self.dim = self.value.shape
         self.distribution = distribution
         self.function = function
         self.name = name
-        self.log_prob = self.distribution.init_dist().log_prob(self.value)
+        self.log_prob = self.logprob(value=self.value)
+
+    # update the logprob if values have changed
+    def logprob(self, value: Array) -> Array:
+        return self.distribution.init_dist().log_prob(value)
 
 class Lpred:
     """
-    Class to define a linear predictor.
+    Linear predictor.
     """
 
     def __init__(self, X: Obs, function: Any = None, name: str = "", **kwinputs) -> None:
@@ -137,9 +177,16 @@ class Lpred:
         self.value = self.update_lpred()
 
     def update_params(self):
-        x = jnp.array([], dtype=jnp.float32)
+        arrays = []
         for kw, input in self.kwinputs.items():
-            x = jnp.append(x, input.value)
+            arrays.append(input.value)
+
+        # flatten the arrays
+        flat_arrays, _ = tree_flatten(arrays)
+
+        # concatenate the flattened arrays
+        x = jnp.concatenate(flat_arrays)
+
         return x
 
     def update_lpred(self):
