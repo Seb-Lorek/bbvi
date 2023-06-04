@@ -12,3 +12,6 @@ __pycache__/
 
 # ignore quarto directory
 quarto
+
+# ignore test.py
+playground/test.py

@@ -7,10 +7,11 @@ import jax.numpy as jnp
 from jax.tree_util import tree_flatten, tree_unflatten
 
 import numpy as np
-from typing import Any, Union
 
 import tensorflow_probability.substrates.jax.distributions as tfjd
 import tensorflow_probability.substrates.numpy.distributions as tfnd
+
+from typing import Any, Union
 
 Array = Any
 Distribution = Union[tfjd.Distribution, tfnd.Distribution]
@@ -29,7 +30,7 @@ class Model:
         self.log_prior = self.logprior()
         self.log_prob = self.logprob()
         self.num_param = self.countparam()
-        self.residuals = None
+        self.tree = {}
 
     # compute log-likelihood
     def loglik(self) -> Array:
@@ -41,6 +42,7 @@ class Model:
         Returns:
             Array: The log-likelihood of the model.
         """
+
         log_lik = self.y_dist.init_dist().log_prob(self.y)
 
         return log_lik
@@ -78,6 +80,17 @@ class Model:
     def logprob(self) -> Array:
         return jnp.sum(self.log_lik) + self.log_prior
 
+    # count the number of parameters in the model
+    def countparam(self) -> int:
+        count = 0
+        for kw1, input1 in self.y_dist.kwinputs.items():
+            if isinstance(input1, Lpred):
+                for kw2, input2 in input1.kwinputs.items():
+                    count += input2.dim[0]
+            elif isinstance(input1, Param):
+                count += input1.dim[0]
+        return count
+
     # update the logprob with Monte Carlo sample of the variational distribution
     def update_graph(self, sample: dict) -> Array:
         for kw1, input1 in self.y_dist.kwinputs.items():
@@ -97,16 +110,27 @@ class Model:
 
         return self.log_prob
 
-    # count the number of parameters in the model
-    def countparam(self) -> int:
-        count = 0
+    #build the model tree
+    def build_tree(self):
+        self.tree["y"] = self.y
+        self.tree["y_dist"] = {"dist": self.y_dist.get_dist()}
+
         for kw1, input1 in self.y_dist.kwinputs.items():
+            self.tree["y_dist"][kw1] = {}
             if isinstance(input1, Lpred):
+                self.tree["y_dist"][kw1]["fixed"] = input1.X_matrix
+                self.tree["y_dist"][kw1]["bijector"] = input1.function
                 for kw2, input2 in input1.kwinputs.items():
-                    count += input2.dim[0]
+                    self.tree["y_dist"][kw1][kw2] = {}
+                    self.tree["y_dist"][kw1][kw2]["dim"] = input2.dim
+                    if input2.function is not None:
+                        self.tree["y_dist"][kw1][kw2]["bijector"] = input2.function
+                    self.tree["y_dist"][kw1][kw2]["dist"] = input2.distribution.init_dist()
             elif isinstance(input1, Param):
-                count += input1.dim[0]
-        return count
+                self.tree["y_dist"][kw1]["dim"] = input1.dim
+                if input1.function is not None:
+                    self.tree["y_dist"][kw1]["bijector"] = input1.function
+                self.tree["y_dist"][kw1]["dist"] = input1.distribution.init_dist()
 
 # define hyperparameters currently no latent variables except model coefficients
 class Hyper:
@@ -131,18 +155,18 @@ class Dist:
         self.distribution = distribution
         self.name = name
         self.kwinputs = kwinputs
+        self.dist_init = self.init_dist()
 
+    # initialize the distribution with kwinputs
     def init_dist(self) -> Distribution:
-        """
-        Initialize the distribution of the parameter.
-
-        Returns:
-            Dist: A tensorflow probability.
-        """
 
         kwargs = {kw: input.value for kw, input in self.kwinputs.items()}
         dist = self.distribution(**kwargs)
         return dist
+
+    # get the distribution from class Dist
+    def get_dist(self):
+        return self.distribution
 
 # class to initialize the parameters
 class Param:
@@ -185,7 +209,7 @@ class Lpred:
         flat_arrays, _ = tree_flatten(arrays)
 
         # concatenate the flattened arrays
-        x = jnp.concatenate(flat_arrays)
+        x = jnp.concatenate(flat_arrays, dtype=jnp.float32)
 
         return x
 
