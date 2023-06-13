@@ -24,14 +24,13 @@ from ..model.model import (
     Model,
     Lpred,
     Param,
-    calc,
     Array,
     Any,
     Distribution)
 
 class Bbvi:
     """
-    Estimation algorithm.
+    Inference algorithm.
     """
 
     def __init__(self, Model: Model, num_samples: int, num_iterations: int, seed: Any) -> None:
@@ -42,13 +41,15 @@ class Bbvi:
         self.seed = seed
         self.variational_params = {}
         self.opt_variational_params = {}
-        self.samples = {}
         self.ELBO = []
 
         self.set_variational_params()
 
-    # initialize the variational parameters of the model
-    def set_variational_params(self):
+    def set_variational_params(self) -> None:
+        """
+        Method to set the internal variational parameters.
+
+        """
         for kw1, input1 in self.Model.y_dist.kwinputs.items():
             if isinstance(input1, Lpred):
                 for kw2, input2 in input1.kwinputs.items():
@@ -56,50 +57,82 @@ class Bbvi:
             elif isinstance(input1, Param):
                 self.variational_params[kw1] = self.init_varparam(input1.dim)
 
-    # initialize the variational parameters
     def init_varparam(self, dim: Any) -> Dict:
+        """
+        Method to initialize the internal variational parameters.
+
+        Args:
+            dim (Any): Dimension of the parameter.
+
+        Returns:
+            Dict: The initial interal variational parameters.
+        """
+
         mu = jnp.zeros(dim)
-        lower_tri = jnp.tri(dim[0])
+
+        lower_tri = jnp.diag(jnp.ones(dim))
         return {"mu": mu, "lower_tri": lower_tri}
 
-    # calculate the logprob of the model
     def logprob(self, sample: Dict) -> Array:
+        """
+        Method to calculate the log-probability with a sample from the variational distribution.
+
+        Args:
+            sample (Dict): Samples from the variational distribution in dictionary form.
+
+        Returns:
+            Array: Log-probability of the model.
+        """
+
         logprior = []
         params = {}
+        response_dist = self.tree["response"]["dist"]
+
         for kw1, input1 in self.Model.y_dist.kwinputs.items():
             if isinstance(input1, Lpred):
                 arrays = []
+                bijector = response_dist[kw1]["bijector"]
+                input1_function = input1.function is not None
+
                 for kw2, input2 in input1.kwinputs.items():
                     if input2.function is not None:
-                        sample[kw2] = self.tree["y_dist"][kw1][kw2]["bijector"](sample[kw2])
-                    logprior.append(jnp.sum(self.tree["y_dist"][kw1][kw2]["dist"].log_prob(sample[kw2])))
-                    arrays.append(sample[kw2])
+                        transformed = response_dist[kw1][kw2]["bijector"](sample[kw2])
+                    else:
+                        transformed = sample[kw2]
+                    logprior.append(response_dist[kw1][kw2]["dist"].log_prob(transformed))
+                    arrays.append(transformed)
 
-                flat_arrays, _ = tree_flatten(arrays)
+                beta = jnp.concatenate(arrays)
 
-                beta = jnp.concatenate(flat_arrays, dtype=jnp.float32)
-
-                nu = calc(self.tree["y_dist"][kw1]["fixed"], beta)
-                if input1.function is not None:
-                    params[kw1] = self.tree["y_dist"][kw1]["bijector"](nu)
+                nu = calc(response_dist[kw1]["design_matrix"], beta)
+                if input1_function:
+                    params[kw1] = bijector(nu)
                 else:
                     params[kw1] = nu
 
             elif isinstance(input1, Param):
-                if input1.function is not None:
-                    sample[kw1] = self.tree["y_dist"][kw1]["bijector"](sample[kw1])
-                logprior.append(jnp.sum(self.tree["y_dist"][kw1]["dist"].log_prob(sample[kw1])))
-                params[kw1] = sample[kw1]
+                transformed = response_dist[kw1]["bijector"](sample[kw1]) if input1.function is not None else sample[kw1]
+                logprior.append(response_dist[kw1]["dist"].log_prob(transformed))
+                params[kw1] = transformed
 
-        logprior = jnp.asarray(logprior)
+        logprior = jnp.concatenate(logprior)
 
-        loglik = self.tree["y_dist"]["dist"](**params).log_prob(self.tree["y"])
+        loglik = self.tree["response"]["dist"]["type"](**params).log_prob(self.tree["response"]["value"])
 
-        return jnp.sum(loglik) + jnp.sum(logprior)
+        return jnp.sum(loglik, keepdims=True) + jnp.sum(logprior, keepdims=True)
 
-    # function to calculate the logprob for all samples and update the graph
     def pass_samples(self, samples: Dict) -> Array:
+        """
+        Method to pass the samples from method lower_bound to the logprob method.
 
+        Args:
+            samples (Dict): Samples from the variational distribution for the parameters of the model in a dictionary.
+
+        Returns:
+            Array: The log-probabilities of the model for all the samples.
+        """
+
+        @jit
         def compute_logprob(i):
             sample = {key: value[i] for key, value in samples.items()}
             return self.logprob(sample=sample)
@@ -108,25 +141,46 @@ class Bbvi:
 
         return logprobs
 
-    # define function that estimates the evidence lower bound
     def lower_bound(self, variational_params: Dict) -> Array:
+        """
+        Method to calculate the negative ELBO (evidence lower bound).
+
+        Args:
+            variational_params (Dict): The varational paramters in a nested dictionary where the first key identifies the paramter of the model.
+
+        Returns:
+            Array: Negative ELBO.
+        """
+
         arrays = []
+        samples = {}
+
         for kw in variational_params.keys():
             mu, lower_tri = variational_params[kw]["mu"], variational_params[kw]["lower_tri"]
 
-            self.samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=(self.num_samples,), seed=self.seed)
+            samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=(self.num_samples,), seed=self.seed)
 
-            e = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(self.samples[kw]))
+            e = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(samples[kw]), keepdims=True)
             arrays.append(e)
 
-        x = jnp.array(arrays, dtype=jnp.float32)
+        means = jnp.concatenate(arrays)
 
-        elbo = jnp.mean(self.pass_samples(self.samples)) - jnp.sum(x)
+        elbo = jnp.mean(self.pass_samples(samples)) - jnp.sum(means)
         return -elbo
 
     def run_bbvi(self, step_size: float = 0.01) -> Tuple:
+        """
+        Method to start the stochastic optimization. The method uses adam.
+
+        Args:
+            step_size (float, optional): Step size or sometimes also learning rate of the adam optimizer. Defaults to 0.01.
+
+        Returns:
+            Tuple: Last negative ELBO and the optimized variational parameters in a dictionary.
+        """
         opt_init, opt_update, get_params = optimizers.adam(step_size=step_size)
         opt_state = opt_init(self.variational_params)
+        arrays = []
 
         @jit
         def step(step, opt_state):
@@ -136,31 +190,53 @@ class Bbvi:
 
         for i in range(self.num_iterations):
             value, opt_state = step(i, opt_state)
-            self.ELBO.append(-value)
+            arrays.append(-jnp.array([value]))
 
-        self.ELBO = jnp.asarray(self.ELBO, dtype=jnp.float32).ravel()
+        self.ELBO = jnp.concatenate(arrays)
         self.variational_params = get_params(opt_state)
         self.set_opt_variational_params()
         return value, self.opt_variational_params
 
-    # initialize the variational parameters of the model
     def set_opt_variational_params(self):
+        """
+        Method to obtain the variational parameters in terms of the covariance matrix and not the lower cholesky factor.
+
+        """
+
         for kw1, input1 in self.Model.y_dist.kwinputs.items():
             if isinstance(input1, Lpred):
                 for kw2, input2 in input1.kwinputs.items():
-                    self.opt_variational_params[kw2] = {}
-                    self.opt_variational_params[kw2]["mu"] = self.variational_params[kw2]["mu"]
-                    self.opt_variational_params[kw2]["cov"] = jnp.dot(self.variational_params[kw2]["lower_tri"], self.variational_params[kw2]["lower_tri"].T)
+                    self.opt_variational_params[kw2] = {
+                        "mu": self.variational_params[kw2]["mu"],
+                        "cov": calc(self.variational_params[kw2]["lower_tri"], self.variational_params[kw2]["lower_tri"].T)
+                    }
             elif isinstance(input1, Param):
-                self.opt_variational_params[kw1] = {}
-                self.opt_variational_params[kw1]["mu"] = self.variational_params[kw1]["mu"]
-                self.opt_variational_params[kw1]["cov"] = jnp.dot(self.variational_params[kw1]["lower_tri"], self.variational_params[kw1]["lower_tri"].T)
+                self.opt_variational_params[kw1] = {
+                    "mu": self.variational_params[kw1]["mu"],
+                    "cov": calc(self.variational_params[kw1]["lower_tri"], self.variational_params[kw1]["lower_tri"].T)
+                }
 
-    # plot the progression of the ELBO
     def plot_elbo(self):
-        # visulaize the ELBO
+        """
+        Method to visualize the progression of the ELBO during the optimization.
+
+        """
         plt.plot(jnp.arange(self.num_iterations), self.ELBO)
         plt.title("Progression of the ELBO")
         plt.xlabel("Iteration")
         plt.ylabel("ELBO")
         plt.show()
+
+@jit
+def calc(x: Array, y: Array) -> Array:
+    """
+    Function to calculate matix/dot products.
+
+    Args:
+        x (Array): Jax.numpy array. Column dimension must match with row dimension of y.
+        y (Array): Jax.numpy array. Row dimension must match with column dimesion of x.
+
+    Returns:
+        Array: Jax.numpy array. The matrix/dot product.
+    """
+    return jnp.dot(x, y)

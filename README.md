@@ -2,10 +2,11 @@
 
 Develop an variational inference algorithm based on [Black Box Variational Inference](https://proceedings.mlr.press/v33/ranganath14.pdf). An introduction to variational inference can be found [here](https://arxiv.org/pdf/1601.00670.pdf).
 
-## Steps
+## ToDo
 
-1. Start writing a simple model container
-2. Implement the algo
+1. Implement a more efficient graph structure
+2. Allow for broad class of variational distributions
+3. Implement B-splines regression
 
 ## Literature
 

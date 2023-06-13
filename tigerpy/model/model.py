@@ -32,31 +32,24 @@ class Model:
         self.num_param = self.countparam()
         self.tree = {}
 
-    # compute log-likelihood
     def loglik(self) -> Array:
         """
-        Module for the log-likelihood of the model.
-        Defined as the sum of the log-probabilities of all observed variables
-        with a probability distribution.
+        Method to calculate the log-likelihood of the model.
 
         Returns:
-            Array: The log-likelihood of the model.
+            Array: Return the log-likelihood of the model.
         """
 
         log_lik = self.y_dist.init_dist().log_prob(self.y)
 
         return log_lik
 
-    # compute log-prior
     def logprior(self) -> Array:
         """
-        The log-prior of the model.
-
-        Defined as the sum of the log-probabilities of all parameter variables
-        with a probability distribution.
+        Compute the log-prior of the model, i.e. the log-pdf/pmf of the priors.
 
         Returns:
-            Array: The log-prior of the model.
+            Array: Log-prior of the model.
         """
 
         arrays = []
@@ -67,21 +60,27 @@ class Model:
             elif isinstance(input1, Param):
                arrays.append(input1.log_prob)
 
-        # flatten the arrays
-        flat_arrays, _ = tree_flatten(arrays)
-
         # concatenate the flattened arrays
-        x = jnp.concatenate(flat_arrays)
+        logprior = jnp.concatenate(arrays)
 
-        # sum all the log-priors of the model and return sum
-        return jnp.sum(x)
+        return jnp.sum(logprior, keepdims=True)
 
-    # sum log-likelihood and log-prior i.e. the joint log-probability of the model.
     def logprob(self) -> Array:
-        return jnp.sum(self.log_lik) + self.log_prior
+        """
+        Method to calculate the log-probability of the model, i.e. the sum of log-likelihood and log-prior.
 
-    # count the number of parameters in the model
+        Returns:
+            Array: Log-probability of the model.
+        """
+        return jnp.sum(self.log_lik, keepdims=True) + self.log_prior
+
     def countparam(self) -> int:
+        """
+        Method to calculate the number of parameters in the model, being the sum of all dims of class Param.
+
+        Returns:
+            int: Number of parameters in the model.
+        """
         count = 0
         for kw1, input1 in self.y_dist.kwinputs.items():
             if isinstance(input1, Lpred):
@@ -91,14 +90,23 @@ class Model:
                 count += input1.dim[0]
         return count
 
-    # update the logprob with Monte Carlo sample of the variational distribution
+
     def update_graph(self, sample: dict) -> Array:
+        """
+        Method to update the graph with a sample from the variational distribution for all Params.
+
+        Args:
+            sample (dict): Samples from the variational distribution in dictionary form.
+
+        Returns:
+            Array: Current log-probability of the model.
+        """
         for kw1, input1 in self.y_dist.kwinputs.items():
             if isinstance(input1, Lpred):
                 for kw2, input2 in input1.kwinputs.items():
                     input2.value = sample[kw2]
                     input2.log_prob = input2.logprob(value=sample[kw2])
-                input1.param_value = input1.update_params()
+                input1.params_values = input1.update_params()
                 input1.value = input1.update_lpred()
             elif isinstance(input1, Param):
                 input1.value = sample[kw1]
@@ -110,29 +118,36 @@ class Model:
 
         return self.log_prob
 
-    #build the model tree
-    def build_tree(self):
-        self.tree["y"] = self.y
-        self.tree["y_dist"] = {"dist": self.y_dist.get_dist()}
+    def build_tree(self) -> None:
+        """
+        Method to build a model tree using a dictionary structure.
+
+        """
+        self.tree["response"] = {}
+        self.tree["response"]["value"] = self.y
+        self.tree["response"]["dist"] = {"type": self.y_dist.get_dist()}
 
         for kw1, input1 in self.y_dist.kwinputs.items():
-            self.tree["y_dist"][kw1] = {}
             if isinstance(input1, Lpred):
-                self.tree["y_dist"][kw1]["fixed"] = input1.X_matrix
-                self.tree["y_dist"][kw1]["bijector"] = input1.function
-                for kw2, input2 in input1.kwinputs.items():
-                    self.tree["y_dist"][kw1][kw2] = {}
-                    self.tree["y_dist"][kw1][kw2]["dim"] = input2.dim
-                    if input2.function is not None:
-                        self.tree["y_dist"][kw1][kw2]["bijector"] = input2.function
-                    self.tree["y_dist"][kw1][kw2]["dist"] = input2.distribution.init_dist()
+                self.tree["response"]["dist"][kw1] = {
+                    "design_matrix": input1.design_matrix,
+                    "bijector": input1.function,
+                    **{
+                        kw2: {
+                            "dim": input2.dim,
+                            "bijector": input2.function,
+                            "dist": input2.distribution.init_dist()
+                        }
+                        for kw2, input2 in input1.kwinputs.items()
+                    }
+                }
             elif isinstance(input1, Param):
-                self.tree["y_dist"][kw1]["dim"] = input1.dim
-                if input1.function is not None:
-                    self.tree["y_dist"][kw1]["bijector"] = input1.function
-                self.tree["y_dist"][kw1]["dist"] = input1.distribution.init_dist()
+                self.tree["response"]["dist"][kw1] = {
+                    "dim": input1.dim,
+                    "bijector": input1.function,
+                    "dist": input1.distribution.init_dist()
+                }
 
-# define hyperparameters currently no latent variables except model coefficients
 class Hyper:
     """
     Hyperparameter.
@@ -145,30 +160,39 @@ class Hyper:
     def __repr__(self) -> str:
         return f'{type(self).__name__}(name="{self.name}")'
 
-# class to set the distributions of the parameters (priors)
 class Dist:
     """
-    Distribution of a parameter.
+    Distribution.
     """
 
-    def __init__(self, distribution: Distribution, name: str = "", **kwinputs: Any):
+    def __init__(self, distribution: Distribution, **kwinputs: Any):
         self.distribution = distribution
-        self.name = name
         self.kwinputs = kwinputs
         self.dist_init = self.init_dist()
 
-    # initialize the distribution with kwinputs
     def init_dist(self) -> Distribution:
+        """
+        Method to initialize class Dist with kwinputs.value.
+
+        Returns:
+            Distribution: A initialized tensorflow probability distribution.
+        """
 
         kwargs = {kw: input.value for kw, input in self.kwinputs.items()}
         dist = self.distribution(**kwargs)
         return dist
 
-    # get the distribution from class Dist
-    def get_dist(self):
+
+    def get_dist(self) -> Distribution:
+        """
+        Method to get the tensorflow probability distribution of the class Dist.
+
+        Returns:
+            Distribution: A tensorflow probability distribution.
+        """
+
         return self.distribution
 
-# class to initialize the parameters
 class Param:
     """
     Parameter.
@@ -182,46 +206,76 @@ class Param:
         self.name = name
         self.log_prob = self.logprob(value=self.value)
 
-    # update the logprob if values have changed
     def logprob(self, value: Array) -> Array:
-        return self.distribution.init_dist().log_prob(value)
+        """
+        Method to calculate the log-probability of the class Param.
+
+        Args:
+            value (Array): Current values of the class Param.
+
+        Returns:
+            Array: A log-probability.
+        """
+
+        return jnp.sum(self.distribution.init_dist().log_prob(value), keepdims=True)
 
 class Lpred:
     """
     Linear predictor.
     """
 
-    def __init__(self, X: Obs, function: Any = None, name: str = "", **kwinputs) -> None:
-        self.X = X
+    def __init__(self, Obs: Obs, function: Any = None, **kwinputs: Any) -> None:
+        self.Obs = Obs
         self.function = function
-        self.name = name
         self.kwinputs = kwinputs
-        self.X_matrix = jnp.asarray(self.X.X, dtype=jnp.float32)
-        self.param_value = self.update_params()
+        self.design_matrix = jnp.asarray(self.Obs.design_matrix, dtype=jnp.float32)
+        self.params_values = self.update_params()
         self.value = self.update_lpred()
 
-    def update_params(self):
+    def update_params(self) -> Array:
+        """
+        Method to update attribute params_values by obtaining all values of class Params in class Lpred.
+
+        Returns:
+            Array: Array of all values of class Params in class Lpred.
+        """
+
         arrays = []
         for kw, input in self.kwinputs.items():
             arrays.append(input.value)
 
-        # flatten the arrays
-        flat_arrays, _ = tree_flatten(arrays)
-
-        # concatenate the flattened arrays
-        x = jnp.concatenate(flat_arrays, dtype=jnp.float32)
+        x = jnp.concatenate(arrays, dtype=jnp.float32)
 
         return x
 
-    def update_lpred(self):
-        nu = calc(self.X_matrix, self.param_value)
+    def update_lpred(self) -> Array:
+        """
+        Method to update the attribute value by calculating the linear predictor and potentially applied an inverse link function (bijetor).
+
+        Returns:
+            Array: Value of the linear predictor.
+        """
+
+        nu = calc(self.design_matrix, self.params_values)
+
         if self.function is not None:
             m = self.function(nu)
-            return m
         else:
-            return nu
+            m = nu
 
-# calculate dot products
+        return m
+
 @jit
-def calc(X: Array, param: Array) -> Array:
-    return jnp.dot(X, param)
+def calc(design_matrix: Array, params: Array) -> Array:
+    """
+    Function to calcute a matrix product using jit.
+
+    Args:
+        design_matrix (Array): Design matrix of class Obs
+        params (Array): Attribute params_values of class Lred
+
+    Returns:
+        Array: Matrix product of the design matrix and the parameters in the class Lpred.
+    """
+
+    return jnp.dot(design_matrix, params)
