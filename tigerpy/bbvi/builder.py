@@ -4,18 +4,17 @@ Black-Box-Variational-Inference.
 
 import jax
 import jax.numpy as jnp
-from jax import grad, jit, vmap
 from jax.example_libraries import optimizers
 
-import numpy as np
-
-import tensorflow as tf
 import tensorflow_probability.substrates.jax.distributions as tfjd
 import tensorflow_probability.substrates.numpy.distributions as tfnd
 
 import matplotlib.pyplot as plt
 
-from typing import List, Dict, Tuple
+import functools
+from functools import partial
+
+from typing import List, Dict, Tuple, NamedTuple, Callable
 
 from .variational import Variational
 
@@ -32,19 +31,22 @@ from..model.utils import (
     dot
 )
 
+class BbviState(NamedTuple):
+    seed: jax.random.PRNGKey
+    opt_state: Any
 
 class Bbvi:
     """
     Inference algorithm.
     """
 
-    def __init__(self, Graph: ModelGraph, num_samples: int, num_iterations: int, seed: Any) -> None:
+    def __init__(self, Graph: ModelGraph, num_samples: int, num_iterations: int, key: Any) -> None:
         self.Graph = Graph
         self.DiGraph = Graph.DiGraph
         self.Model = Graph.Model
         self.num_samples = num_samples
         self.num_iterations = num_iterations
-        self.seed = seed
+        self.key = key
         self.variational_params = {}
         self.opt_variational_params = {}
         self.elbo_history = {"elbo": jnp.array([])}
@@ -115,7 +117,7 @@ class Bbvi:
         for kw in variational_params.keys():
             mu, lower_tri = variational_params[kw]["mu"], variational_params[kw]["lower_tri"]
 
-            samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=(self.num_samples), seed=self.seed)
+            samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=(self.num_samples), seed=jax.random.PRNGKey(self.key))
 
             entropy = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(samples[kw]), keepdims=True)
             arrays.append(entropy)
@@ -125,9 +127,26 @@ class Bbvi:
         elbo = jnp.mean(self.pass_samples(samples)) - jnp.sum(means)
         return -elbo
 
-    def run_bbvi(self, step_size: float = 0.001, threshold: float = 0.001) -> Tuple:
+    @partial(jax.jit, static_argnums=(0,1))
+    def bbvi_scan(self, chunk_size: int, bbvi_state: BbviState) -> Tuple[BbviState, jnp.array]:
+
+        def bbvi_body(state, i, lower_bound, get_params, opt_update):
+            value, grads = jax.value_and_grad(lower_bound)(get_params(state.opt_state))
+            opt_state = opt_update(i, grads, state.opt_state)
+
+            return BbviState(state.seed, opt_state), -value
+
+         # pass self.lower_bound, self.get_params, self.opt_update as arguments to bbvi_body
+        bbvi_body = functools.partial(bbvi_body, lower_bound=self.lower_bound, get_params=self.get_params, opt_update=self.opt_update)
+
+        scan_input = jnp.arange(chunk_size)
+        new_state, elbo_chunk = jax.lax.scan(bbvi_body, bbvi_state, scan_input)
+
+        return new_state, elbo_chunk
+
+    def run_bbvi(self, step_size: float = 0.001, threshold: float = 1e-5, chunk_size: int = 1) -> Tuple:
         """
-        Method to start the stochastic optimization. The method uses adam.
+        Method to start the stochastic optimization. The implementation ueses adam.
 
         Args:
             step_size (float, optional): Step size or sometimes also learning rate of the adam optimizer. Defaults to 0.01.
@@ -136,31 +155,26 @@ class Bbvi:
             Tuple: Last negative ELBO and the optimized variational parameters in a dictionary.
         """
 
-        opt_init, opt_update, get_params = optimizers.adam(step_size=step_size)
-        opt_state = opt_init(self.variational_params)
-        elbo_history_list = []
+        self.opt_init, self.opt_update, self.get_params = optimizers.adam(step_size=step_size)
+        opt_state = self.opt_init(self.variational_params)
 
-        @jit
-        def step(step, opt_state):
-            value, grads = jax.value_and_grad(self.lower_bound)(get_params(opt_state))
-            opt_state = opt_update(step, grads, opt_state)
-            return value, opt_state
+        seed = jax.random.PRNGKey(self.key)
+        state = BbviState(seed, opt_state)
+        elbo_chunks = []
 
-        for i in range(self.num_iterations):
-            value, opt_state = step(i, opt_state)
-            elbo_history_list.append(-value)
+        for _ in range(self.num_iterations // chunk_size):
+            state, elbo_chunk = self.bbvi_scan(chunk_size, state)
+            elbo_chunks.append(elbo_chunk)
+            elbo_delta = abs(elbo_chunk[-1] - elbo_chunk[-2]) if len(elbo_chunk) > 1 else jnp.inf
+            if elbo_delta < threshold:
+                break
 
-            if i>1:
-                elbo_delta = abs(elbo_history_list[-1] - elbo_history_list[-2])
-
-                if elbo_delta < threshold:
-                    break
-
-        self.elbo_history["elbo"] = jnp.array(elbo_history_list)
-        self.elbo_history["iter"] = jnp.arange(i + 1)
-        self.variational_params = get_params(opt_state)
+        elbo_history = jnp.concatenate(elbo_chunks)
+        self.elbo_history["elbo"] = elbo_history
+        self.elbo_history["iter"] = jnp.arange(len(elbo_history))
+        self.variational_params = self.get_params(state.opt_state)
         self.set_opt_variational_params()
-        return value, self.opt_variational_params
+        return self.elbo_history["elbo"][-1], self.opt_variational_params
 
     def set_opt_variational_params(self):
         """
