@@ -5,7 +5,6 @@ Black-Box-Variational-Inference.
 import jax
 import jax.numpy as jnp
 from jax import grad, jit, vmap
-from jax.tree_util import tree_flatten, tree_unflatten
 from jax.example_libraries import optimizers
 
 import numpy as np
@@ -21,41 +20,47 @@ from typing import List, Dict, Tuple
 from .variational import Variational
 
 from ..model.model import (
-    Model,
-    Lpred,
-    Param,
     Array,
-    Any,
-    Distribution)
+    Any
+    )
+
+from ..model.nodes import(
+    ModelGraph
+)
+
+from..model.utils import (
+    dot
+)
+
 
 class Bbvi:
     """
     Inference algorithm.
     """
 
-    def __init__(self, Model: Model, num_samples: int, num_iterations: int, seed: Any) -> None:
-        self.Model = Model
-        self.tree = Model.tree
+    def __init__(self, Graph: ModelGraph, num_samples: int, num_iterations: int, seed: Any) -> None:
+        self.Graph = Graph
+        self.DiGraph = Graph.DiGraph
+        self.Model = Graph.Model
         self.num_samples = num_samples
         self.num_iterations = num_iterations
         self.seed = seed
         self.variational_params = {}
         self.opt_variational_params = {}
-        self.ELBO = []
+        self.elbo_history = {"elbo": jnp.array([])}
 
         self.set_variational_params()
 
     def set_variational_params(self) -> None:
         """
         Method to set the internal variational parameters.
-
         """
-        for kw1, input1 in self.Model.y_dist.kwinputs.items():
-            if isinstance(input1, Lpred):
-                for kw2, input2 in input1.kwinputs.items():
-                    self.variational_params[kw2] = self.init_varparam(input2.dim)
-            elif isinstance(input1, Param):
-                self.variational_params[kw1] = self.init_varparam(input1.dim)
+
+        for node in self.Graph.prob_traversal_order:
+            node_type = self.DiGraph.nodes[node].get("node_type")
+            if node_type == "strong":
+                attr = self.DiGraph.nodes[node]["attr"]
+                self.variational_params[node] = self.init_varparam(attr["dim"])
 
     def init_varparam(self, dim: Any) -> Dict:
         """
@@ -73,54 +78,6 @@ class Bbvi:
         lower_tri = jnp.diag(jnp.ones(dim))
         return {"mu": mu, "lower_tri": lower_tri}
 
-    def logprob(self, sample: Dict) -> Array:
-        """
-        Method to calculate the log-probability with a sample from the variational distribution.
-
-        Args:
-            sample (Dict): Samples from the variational distribution in dictionary form.
-
-        Returns:
-            Array: Log-probability of the model.
-        """
-
-        logprior = []
-        params = {}
-        response_dist = self.tree["response"]["dist"]
-
-        for kw1, input1 in self.Model.y_dist.kwinputs.items():
-            if isinstance(input1, Lpred):
-                arrays = []
-                bijector = response_dist[kw1]["bijector"]
-                input1_function = input1.function is not None
-
-                for kw2, input2 in input1.kwinputs.items():
-                    if input2.function is not None:
-                        transformed = response_dist[kw1][kw2]["bijector"](sample[kw2])
-                    else:
-                        transformed = sample[kw2]
-                    logprior.append(response_dist[kw1][kw2]["dist"].log_prob(transformed))
-                    arrays.append(transformed)
-
-                beta = jnp.concatenate(arrays)
-
-                nu = calc(response_dist[kw1]["design_matrix"], beta)
-                if input1_function:
-                    params[kw1] = bijector(nu)
-                else:
-                    params[kw1] = nu
-
-            elif isinstance(input1, Param):
-                transformed = response_dist[kw1]["bijector"](sample[kw1]) if input1.function is not None else sample[kw1]
-                logprior.append(response_dist[kw1]["dist"].log_prob(transformed))
-                params[kw1] = transformed
-
-        logprior = jnp.concatenate(logprior)
-
-        loglik = self.tree["response"]["dist"]["type"](**params).log_prob(self.tree["response"]["value"])
-
-        return jnp.sum(loglik, keepdims=True) + jnp.sum(logprior, keepdims=True)
-
     def pass_samples(self, samples: Dict) -> Array:
         """
         Method to pass the samples from method lower_bound to the logprob method.
@@ -132,10 +89,10 @@ class Bbvi:
             Array: The log-probabilities of the model for all the samples.
         """
 
-        @jit
         def compute_logprob(i):
             sample = {key: value[i] for key, value in samples.items()}
-            return self.logprob(sample=sample)
+            self.Graph.update_graph(sample)
+            return self.Graph.logprob()
 
         logprobs = jax.vmap(compute_logprob)(jnp.arange(self.num_samples))
 
@@ -158,17 +115,17 @@ class Bbvi:
         for kw in variational_params.keys():
             mu, lower_tri = variational_params[kw]["mu"], variational_params[kw]["lower_tri"]
 
-            samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=(self.num_samples,), seed=self.seed)
+            samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=(self.num_samples), seed=self.seed)
 
-            e = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(samples[kw]), keepdims=True)
-            arrays.append(e)
+            entropy = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(samples[kw]), keepdims=True)
+            arrays.append(entropy)
 
         means = jnp.concatenate(arrays)
 
         elbo = jnp.mean(self.pass_samples(samples)) - jnp.sum(means)
         return -elbo
 
-    def run_bbvi(self, step_size: float = 0.01) -> Tuple:
+    def run_bbvi(self, step_size: float = 0.001, threshold: float = 0.001) -> Tuple:
         """
         Method to start the stochastic optimization. The method uses adam.
 
@@ -178,9 +135,10 @@ class Bbvi:
         Returns:
             Tuple: Last negative ELBO and the optimized variational parameters in a dictionary.
         """
+
         opt_init, opt_update, get_params = optimizers.adam(step_size=step_size)
         opt_state = opt_init(self.variational_params)
-        arrays = []
+        elbo_history_list = []
 
         @jit
         def step(step, opt_state):
@@ -190,9 +148,16 @@ class Bbvi:
 
         for i in range(self.num_iterations):
             value, opt_state = step(i, opt_state)
-            arrays.append(-jnp.array([value]))
+            elbo_history_list.append(-value)
 
-        self.ELBO = jnp.concatenate(arrays)
+            if i>1:
+                elbo_delta = abs(elbo_history_list[-1] - elbo_history_list[-2])
+
+                if elbo_delta < threshold:
+                    break
+
+        self.elbo_history["elbo"] = jnp.array(elbo_history_list)
+        self.elbo_history["iter"] = jnp.arange(i + 1)
         self.variational_params = get_params(opt_state)
         self.set_opt_variational_params()
         return value, self.opt_variational_params
@@ -200,43 +165,23 @@ class Bbvi:
     def set_opt_variational_params(self):
         """
         Method to obtain the variational parameters in terms of the covariance matrix and not the lower cholesky factor.
-
         """
 
-        for kw1, input1 in self.Model.y_dist.kwinputs.items():
-            if isinstance(input1, Lpred):
-                for kw2, input2 in input1.kwinputs.items():
-                    self.opt_variational_params[kw2] = {
-                        "mu": self.variational_params[kw2]["mu"],
-                        "cov": calc(self.variational_params[kw2]["lower_tri"], self.variational_params[kw2]["lower_tri"].T)
+        for node in self.Graph.prob_traversal_order:
+            node_type = self.DiGraph.nodes[node].get("node_type")
+            if node_type == "strong":
+                self.opt_variational_params[node] = {
+                        "mu": self.variational_params[node]["mu"],
+                        "cov": dot(self.variational_params[node]["lower_tri"], self.variational_params[node]["lower_tri"].T)
                     }
-            elif isinstance(input1, Param):
-                self.opt_variational_params[kw1] = {
-                    "mu": self.variational_params[kw1]["mu"],
-                    "cov": calc(self.variational_params[kw1]["lower_tri"], self.variational_params[kw1]["lower_tri"].T)
-                }
 
     def plot_elbo(self):
         """
         Method to visualize the progression of the ELBO during the optimization.
-
         """
-        plt.plot(jnp.arange(self.num_iterations), self.ELBO)
+
+        plt.plot(self.elbo_history["iter"], self.elbo_history["elbo"])
         plt.title("Progression of the ELBO")
         plt.xlabel("Iteration")
         plt.ylabel("ELBO")
         plt.show()
-
-@jit
-def calc(x: Array, y: Array) -> Array:
-    """
-    Function to calculate matix/dot products.
-
-    Args:
-        x (Array): Jax.numpy array. Column dimension must match with row dimension of y.
-        y (Array): Jax.numpy array. Row dimension must match with column dimesion of x.
-
-    Returns:
-        Array: Jax.numpy array. The matrix/dot product.
-    """
-    return jnp.dot(x, y)

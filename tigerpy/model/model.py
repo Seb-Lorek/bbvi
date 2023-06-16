@@ -2,9 +2,7 @@
 Tiger model.
 """
 
-from jax import jit
 import jax.numpy as jnp
-from jax.tree_util import tree_flatten, tree_unflatten
 
 import numpy as np
 
@@ -18,14 +16,18 @@ Distribution = Union[tfjd.Distribution, tfnd.Distribution]
 
 from .observation import Obs
 
+from .utils import (
+    dot
+)
+
 class Model:
     """
     Static model.
     """
 
-    def __init__(self, y: Array, distribution: Distribution) -> None:
-        self.y = jnp.asarray(y, dtype=jnp.float32)
-        self.y_dist = distribution
+    def __init__(self, response: Array, distribution: Distribution) -> None:
+        self.response = jnp.asarray(response, dtype=jnp.float32)
+        self.response_dist = distribution
         self.log_lik = self.loglik()
         self.log_prior = self.logprior()
         self.log_prob = self.logprob()
@@ -40,7 +42,7 @@ class Model:
             Array: Return the log-likelihood of the model.
         """
 
-        log_lik = self.y_dist.init_dist().log_prob(self.y)
+        log_lik = self.response_dist.init_dist().log_prob(self.response)
 
         return log_lik
 
@@ -53,7 +55,7 @@ class Model:
         """
 
         arrays = []
-        for kw1, input1 in self.y_dist.kwinputs.items():
+        for kw1, input1 in self.response_dist.kwinputs.items():
             if isinstance(input1, Lpred):
                 for kw2, input2 in input1.kwinputs.items():
                     arrays.append(input2.log_prob)
@@ -63,7 +65,7 @@ class Model:
         # concatenate the flattened arrays
         logprior = jnp.concatenate(arrays)
 
-        return jnp.sum(logprior, keepdims=True)
+        return jnp.sum(logprior)
 
     def logprob(self) -> Array:
         """
@@ -72,7 +74,8 @@ class Model:
         Returns:
             Array: Log-probability of the model.
         """
-        return jnp.sum(self.log_lik, keepdims=True) + self.log_prior
+
+        return jnp.sum(self.log_lik) + self.log_prior
 
     def countparam(self) -> int:
         """
@@ -81,72 +84,15 @@ class Model:
         Returns:
             int: Number of parameters in the model.
         """
+
         count = 0
-        for kw1, input1 in self.y_dist.kwinputs.items():
+        for kw1, input1 in self.response_dist.kwinputs.items():
             if isinstance(input1, Lpred):
                 for kw2, input2 in input1.kwinputs.items():
                     count += input2.dim[0]
             elif isinstance(input1, Param):
                 count += input1.dim[0]
         return count
-
-
-    def update_graph(self, sample: dict) -> Array:
-        """
-        Method to update the graph with a sample from the variational distribution for all Params.
-
-        Args:
-            sample (dict): Samples from the variational distribution in dictionary form.
-
-        Returns:
-            Array: Current log-probability of the model.
-        """
-        for kw1, input1 in self.y_dist.kwinputs.items():
-            if isinstance(input1, Lpred):
-                for kw2, input2 in input1.kwinputs.items():
-                    input2.value = sample[kw2]
-                    input2.log_prob = input2.logprob(value=sample[kw2])
-                input1.params_values = input1.update_params()
-                input1.value = input1.update_lpred()
-            elif isinstance(input1, Param):
-                input1.value = sample[kw1]
-                input1.log_prob = input1.logprob(value=sample[kw1])
-
-        self.log_lik = self.loglik()
-        self.log_prior = self.logprior()
-        self.log_prob = self.logprob()
-
-        return self.log_prob
-
-    def build_tree(self) -> None:
-        """
-        Method to build a model tree using a dictionary structure.
-
-        """
-        self.tree["response"] = {}
-        self.tree["response"]["value"] = self.y
-        self.tree["response"]["dist"] = {"type": self.y_dist.get_dist()}
-
-        for kw1, input1 in self.y_dist.kwinputs.items():
-            if isinstance(input1, Lpred):
-                self.tree["response"]["dist"][kw1] = {
-                    "design_matrix": input1.design_matrix,
-                    "bijector": input1.function,
-                    **{
-                        kw2: {
-                            "dim": input2.dim,
-                            "bijector": input2.function,
-                            "dist": input2.distribution.init_dist()
-                        }
-                        for kw2, input2 in input1.kwinputs.items()
-                    }
-                }
-            elif isinstance(input1, Param):
-                self.tree["response"]["dist"][kw1] = {
-                    "dim": input1.dim,
-                    "bijector": input1.function,
-                    "dist": input1.distribution.init_dist()
-                }
 
 class Hyper:
     """
@@ -168,7 +114,6 @@ class Dist:
     def __init__(self, distribution: Distribution, **kwinputs: Any):
         self.distribution = distribution
         self.kwinputs = kwinputs
-        self.dist_init = self.init_dist()
 
     def init_dist(self) -> Distribution:
         """
@@ -198,7 +143,7 @@ class Param:
     Parameter.
     """
 
-    def __init__(self, value: Array, distribution: Distribution, function: Any = None, name: str = "") -> None:
+    def __init__(self, value: Array, distribution: Dist, function: Any = None, name: str = "") -> None:
         self.value = jnp.atleast_1d(value)
         self.dim = self.value.shape
         self.distribution = distribution
@@ -256,7 +201,7 @@ class Lpred:
             Array: Value of the linear predictor.
         """
 
-        nu = calc(self.design_matrix, self.params_values)
+        nu = dot(self.design_matrix, self.params_values)
 
         if self.function is not None:
             m = self.function(nu)
@@ -264,18 +209,3 @@ class Lpred:
             m = nu
 
         return m
-
-@jit
-def calc(design_matrix: Array, params: Array) -> Array:
-    """
-    Function to calcute a matrix product using jit.
-
-    Args:
-        design_matrix (Array): Design matrix of class Obs
-        params (Array): Attribute params_values of class Lred
-
-    Returns:
-        Array: Matrix product of the design matrix and the parameters in the class Lpred.
-    """
-
-    return jnp.dot(design_matrix, params)
