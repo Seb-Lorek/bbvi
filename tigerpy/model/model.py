@@ -3,7 +3,6 @@ Tiger model.
 """
 
 import jax.numpy as jnp
-
 import numpy as np
 
 import tensorflow_probability.substrates.jax.distributions as tfjd
@@ -16,7 +15,7 @@ Distribution = Union[tfjd.Distribution, tfnd.Distribution]
 
 from .observation import Obs
 
-from .utils import (
+from ..utils import (
     dot
 )
 
@@ -31,8 +30,7 @@ class Model:
         self.log_lik = self.loglik()
         self.log_prior = self.logprior()
         self.log_prob = self.logprob()
-        self.num_param = self.countparam()
-        self.tree = {}
+        self.num_param = self.count_param_instances(self.response_dist)
 
     def loglik(self) -> Array:
         """
@@ -54,18 +52,12 @@ class Model:
             Array: Log-prior of the model.
         """
 
-        arrays = []
-        for kw1, input1 in self.response_dist.kwinputs.items():
-            if isinstance(input1, Lpred):
-                for kw2, input2 in input1.kwinputs.items():
-                    arrays.append(input2.log_prob)
-            elif isinstance(input1, Param):
-               arrays.append(input1.log_prob)
+        prior_list = self.return_param_logpriors(self.response_dist)
 
         # concatenate the flattened arrays
-        logprior = jnp.concatenate(arrays)
+        log_prior = jnp.concatenate(prior_list)
 
-        return jnp.sum(logprior)
+        return jnp.sum(log_prior)
 
     def logprob(self) -> Array:
         """
@@ -77,21 +69,62 @@ class Model:
 
         return jnp.sum(self.log_lik) + self.log_prior
 
-    def countparam(self) -> int:
+    def return_param_logpriors(self, obj: Any) -> list:
         """
-        Method to calculate the number of parameters in the model, being the sum of all dims of class Param.
+        Method to obtain all log-probabilites of the classes Param. The function has a
+        recursive structure.
+
+        Args:
+            obj (Any): Class distribution of the response (nested class structure).
+
+        Returns:
+            list: Return a list with all log-probabilites.
+        """
+
+        l = []
+        if isinstance(obj, Param):
+            l.extend([obj.log_prior])
+
+        if isinstance(obj, (list, tuple)):
+            for item in obj:
+                l.extend(self.return_param_logpriors(item))
+
+        if isinstance(obj, dict):
+            for value in obj.values():
+                l.extend(self.return_param_logpriors(value))
+
+        if hasattr(obj, "__dict__"):
+            l.extend(self.return_param_logpriors(obj.__dict__))
+
+        return l
+
+    def count_param_instances(self, obj: Any) -> int:
+        """
+        Method to count the number of parameters in the model. The method
+        has a recursive structure.
+
+        Args:
+            obj (Any): Class distribution of the response (nested class structure).
 
         Returns:
             int: Number of parameters in the model.
         """
 
         count = 0
-        for kw1, input1 in self.response_dist.kwinputs.items():
-            if isinstance(input1, Lpred):
-                for kw2, input2 in input1.kwinputs.items():
-                    count += input2.dim[0]
-            elif isinstance(input1, Param):
-                count += input1.dim[0]
+        if isinstance(obj, Param):
+            count += obj.dim[0]
+
+        if isinstance(obj, (list, tuple)):
+            for item in obj:
+               count += self.count_param_instances(item)
+
+        if isinstance(obj, dict):
+            for value in obj.values():
+                count += self.count_param_instances(value)
+
+        if hasattr(obj, "__dict__"):
+            count += self.count_param_instances(obj.__dict__)
+
         return count
 
 class Hyper:
@@ -100,7 +133,7 @@ class Hyper:
     """
 
     def __init__(self, value: Array, name: str = "") -> None:
-        self.value = value
+        self.value = jnp.asarray(value)
         self.name = name
 
     def __repr__(self) -> str:
@@ -144,14 +177,22 @@ class Param:
     """
 
     def __init__(self, value: Array, distribution: Dist, function: Any = None, name: str = "") -> None:
-        self.value = jnp.atleast_1d(value)
-        self.dim = self.value.shape
         self.distribution = distribution
         self.function = function
         self.name = name
-        self.log_prob = self.logprob(value=self.value)
+        self.internal_value = jnp.atleast_1d(value)
+        self.value = self.init_value(self.internal_value)
+        self.dim = self.value.shape
+        self.log_prior = self.logprior(value=self.value)
 
-    def logprob(self, value: Array) -> Array:
+    def init_value(self, value):
+        if self.function is not None:
+            transform = self.function(value)
+        else:
+            transform = jnp.atleast_1d(value)
+        return transform
+
+    def logprior(self, value: Array) -> Array:
         """
         Method to calculate the log-probability of the class Param.
 
@@ -162,7 +203,9 @@ class Param:
             Array: A log-probability.
         """
 
-        return jnp.sum(self.distribution.init_dist().log_prob(value), keepdims=True)
+        log_prior = self.distribution.init_dist().log_prob(value)
+
+        return jnp.sum(log_prior, keepdims=True)
 
 class Lpred:
     """
@@ -179,7 +222,8 @@ class Lpred:
 
     def update_params(self) -> Array:
         """
-        Method to update attribute params_values by obtaining all values of class Params in class Lpred.
+        Method to update attribute params_values by obtaining all values of
+        class Params in class Lpred.
 
         Returns:
             Array: Array of all values of class Params in class Lpred.
@@ -195,7 +239,8 @@ class Lpred:
 
     def update_lpred(self) -> Array:
         """
-        Method to update the attribute value by calculating the linear predictor and potentially applied an inverse link function (bijetor).
+        Method to update the attribute value by calculating the linear predictor
+        and potentially applied an inverse link function (bijetor).
 
         Returns:
             Array: Value of the linear predictor.
