@@ -27,7 +27,7 @@ from ..model.nodes import(
     ModelGraph
 )
 
-from..model.utils import (
+from ..utils import (
     dot
 )
 
@@ -49,9 +49,45 @@ class Bbvi:
         self.key = key
         self.variational_params = {}
         self.opt_variational_params = {}
-        self.elbo_history = {"elbo": jnp.array([])}
+        self.elbo_history = {}
 
         self.set_variational_params()
+
+    def set_variational_params_test(self) -> None:
+
+        included = []
+        for node in reversed(self.Graph.prob_traversal_order):
+            node_type = self.DiGraph.nodes[node].get("node_type")
+            if node_type == "strong" and node not in included:
+                included.append(node)
+                neighbours = list(self.DiGraph.predecessors(node))
+                neighbours_param = []
+                for neighbour in neighbours:
+                    neighbour_node_type = self.DiGraph.nodes[neighbour].get("node_type")
+                    if neighbour_node_type == "strong":
+                        neighbours_param.append(neighbour)
+
+                included.extend(neighbours_param)
+                if len(neighbours_param) >= 1:
+                    name = node + "_" + "_".join(neighbours_param)
+                    self.variational_params[name] = self.init_variational_params_test(name)
+                else:
+                    self.variational_params[node] = self.init_variational_params(node)
+
+    def init_variational_params_test(self, joint_nodes: str):
+        nodes = joint_nodes.split("_")
+        mu = []
+        diag = []
+        for node in nodes:
+            attr = self.DiGraph.nodes[node]["attr"]
+            input = self.DiGraph.nodes[node]["input"]
+            mu.append(attr["internal_value"])
+            diag.append(jnp.ones(attr["dim"])*1.25)
+
+        mu = jnp.concatenate(mu)
+        lower_tri = jnp.diag(jnp.concatenate(diag))
+
+        return {"mu": mu, "lower_tri": lower_tri}
 
     def set_variational_params(self) -> None:
         """
@@ -62,22 +98,24 @@ class Bbvi:
             node_type = self.DiGraph.nodes[node].get("node_type")
             if node_type == "strong":
                 attr = self.DiGraph.nodes[node]["attr"]
-                self.variational_params[node] = self.init_varparam(attr["dim"])
+                input = self.DiGraph.nodes[node]["input"]
+                self.variational_params[node] = self.init_variational_params(attr, input)
 
-    def init_varparam(self, dim: Any) -> Dict:
+    def init_variational_params(self, attr: Any, input: Any) -> Dict:
         """
         Method to initialize the internal variational parameters.
 
         Args:
-            dim (Any): Dimension of the parameter.
+            attr (Any): Attributes of a parameter node.
+            input (Any): Input data that is passed from child notes to parents.
 
         Returns:
             Dict: The initial interal variational parameters.
         """
 
-        mu = jnp.zeros(dim)
+        mu = attr["internal_value"]
 
-        lower_tri = jnp.diag(jnp.ones(dim))
+        lower_tri = jnp.diag(jnp.ones(attr["dim"])*1.25)
         return {"mu": mu, "lower_tri": lower_tri}
 
     def pass_samples(self, samples: Dict) -> Array:

@@ -10,13 +10,14 @@ import re
 
 from typing import Any
 
-from .utils import (
+from ..utils import (
     dot
 )
 
 from .model import (
     Model,
     Lpred,
+    Hyper,
     Param,
     Array,
     Distribution
@@ -52,10 +53,11 @@ class ModelGraph:
         """
 
         attr = {"dim": input.dim,
+                "internal_value": input.internal_value,
                  "value": input.value,
                  "bijector": input.function,
                  "dist": input.distribution.get_dist(),
-                 "log_prior": input.log_prob}
+                 "log_prior": input.log_prior}
         self.DiGraph.add_node(name, attr=attr)
         self.DiGraph.nodes[name]["node_type"] = "strong"
         self.DiGraph.nodes[name]["input"] = {}
@@ -128,14 +130,13 @@ class ModelGraph:
 
         return transformed
 
-    def update_param_value(self, attr: dict, sample: Array, transform: bool = True) -> Array:
+    def update_param_value(self, attr: dict, sample: Array) -> Array:
         """
         Method to calculate the value attribute of a parameter node using samples from a variational distribution for a parameter in the DAG.
 
         Args:
             attr (dict): Attributes of a node
             sample (Array): Sample (internal representation) from the variational distribution of the parameter.
-            transform (Any): A bijector function that respects the parameter space of the paramter.
 
         Returns:
             Array: Sample of the parameter after applying the bijector.
@@ -143,7 +144,7 @@ class ModelGraph:
 
         bijector = attr["bijector"]
 
-        if bijector is not None and transform == True:
+        if bijector is not None:
             transformed = bijector(sample)
         else:
             transformed = sample
@@ -221,6 +222,10 @@ class ModelGraph:
         return dist.log_prob(value)
 
     def logprob(self) -> Array:
+        """
+        Method to calculate the log-probability of the graph. Hence summing the log-likelihood
+        and all log-priors of probabilistic nodes.
+        """
 
         log_prob_sum = jnp.array([0.0], dtype=jnp.float32)
 
@@ -247,34 +252,35 @@ class ModelGraph:
         for node in self.traversal_order:
             node_type = self.DiGraph.nodes[node]["node_type"]
             attr = self.DiGraph.nodes[node]["attr"]
-            successors = self.DiGraph.successors(node)
+            successors = list(self.DiGraph.successors(node))
+            if successors:
+                successor = successors[0]
 
             if node_type == "hyper":
                 input = attr["value"]
 
-                for successor in successors:
-                    edge = self.DiGraph.get_edge_data(node, successor)
-                    self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+                edge = self.DiGraph.get_edge_data(node, successor)
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
             elif node_type == "fixed":
                 input = attr["value"]
 
-                for successor in successors:
-                    edge = self.DiGraph.get_edge_data(node, successor)
-                    self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+                edge = self.DiGraph.get_edge_data(node, successor)
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
             elif node_type == "lpred":
                 attr["value"] = self.update_lpred(node, attr)
                 input = attr["value"]
 
-                for successor in successors:
-                    self.DiGraph.nodes[successor]["input"][node] = input
+                edge = self.DiGraph.get_edge_data(node, successor)
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
             elif node_type == "strong":
                 attr["dist"] = self.init_dist(attr["dist"], self.DiGraph.nodes[node]["input"])
-                attr["value"] = self.update_param_value(attr, sample[node], transform=False)
+                attr["internal_value"] = sample[node]
+                attr["value"] = self.update_param_value(attr, sample[node])
                 attr["log_prior"] = self.logprior(attr["dist"], attr["value"])
                 input = attr["value"]
 
-                for successor in successors:
-                    self.DiGraph.nodes[successor]["input"][node] = input
+                edge = self.DiGraph.get_edge_data(node, successor)
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
             elif node_type == "root":
                 init_dist = self.init_dist(attr["dist"], self.DiGraph.nodes[node]["input"])
                 attr["log_lik"] = self.loglik(init_dist, attr["value"])
@@ -294,32 +300,45 @@ class ModelGraph:
         for kw1, input1 in self.Model.response_dist.kwinputs.items():
             if isinstance(input1, Lpred):
                 self.add_lpred_node(name=kw1, input=input1)
-                self.DiGraph.add_edge(kw1, "response", role="lpred", bijector=input1.function)
+                self.DiGraph.add_edge(kw1, "response", role=kw1, bijector=input1.function)
                 name = input1.Obs.name
                 self.add_fixed_node(name=name, input=input1)
                 self.DiGraph.add_edge(name, kw1, role="fixed")
 
                 for kw2, input2 in input1.kwinputs.items():
                     self.add_strong_node(name=kw2, input=input2)
-                    self.DiGraph.add_edge(kw2, kw1, role="param")
+                    self.DiGraph.add_edge(kw2, kw1, role=kw2)
 
                     for kw3, input3 in input2.distribution.kwinputs.items():
-                        name = input3.name
-                        self.add_hyper_node(name=name, input=input3)
-                        self.DiGraph.add_edge(name, kw2, role=kw3)
+                        if isinstance(input3, Hyper):
+                            name_hyper = input3.name
+                            self.add_hyper_node(name=name_hyper, input=input3)
+                            self.DiGraph.add_edge(name_hyper, kw2, role=kw3)
+                        elif isinstance(input3, Param):
+                            name_param = input3.name
+                            self.add_strong_node(name=name_param, input=input3)
+                            self.DiGraph.add_edge(name_param, kw2, role=kw3)
 
-                    params[kw2] = input2.value
+                            for kw4, input4 in input3.distribution.kwinputs.items():
+                                name_hyper = input4.name
+                                self.add_hyper_node(name=name_hyper, input=input4)
+                                self.DiGraph.add_edge(name_hyper, name_param, role=kw4)
+
+                            params[name_param] = input3.internal_value
+
+                    params[kw2] = input2.internal_value
 
             elif isinstance(input1, Param):
-                self.add_strong_node(name=kw1, input=input1)
-                self.DiGraph.add_edge(kw1, "response", role="param")
+                name_param = input1.name
+                self.add_strong_node(name=name_param, input=input1)
+                self.DiGraph.add_edge(name_param, "response", role=kw1)
 
-                for kw3, input3 in input1.distribution.kwinputs.items():
-                    name = input3.name
-                    self.add_hyper_node(name=name, input=input3)
-                    self.DiGraph.add_edge(name, kw1, role=kw3)
+                for kw2, input2 in input1.distribution.kwinputs.items():
+                    name_hyper = input2.name
+                    self.add_hyper_node(name=name_hyper, input=input2)
+                    self.DiGraph.add_edge(name_hyper, name_param, role=kw2)
 
-                params[kw1] = input1.value
+                params[name_param] = input1.internal_value
 
         # Obtain the traversal order for the initialization of the graph
         self.init_traversal()
@@ -338,21 +357,23 @@ class ModelGraph:
         for node in self.update_traversal_order:
             node_type = self.DiGraph.nodes[node]["node_type"]
             attr = self.DiGraph.nodes[node]["attr"]
-            successors = self.DiGraph.successors(node)
+            successors = list(self.DiGraph.successors(node))
+            if successors:
+                successor = successors[0]
 
             if node_type == "lpred":
                 attr["value"] = self.update_lpred(node, attr)
                 input = attr["value"]
 
-                for successor in successors:
-                    self.DiGraph.nodes[successor]["input"][node] = input
+                edge = self.DiGraph.get_edge_data(node, successor)
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
             elif node_type == "strong":
-                attr["value"] = self.update_param_value(attr, sample[node], transform=True)
+                attr["value"] = self.update_param_value(attr, sample[node])
                 attr["log_prior"] = self.logprior(attr["dist"], attr["value"])
                 input = attr["value"]
 
-                for successor in successors:
-                    self.DiGraph.nodes[successor]["input"][node] = input
+                edge = self.DiGraph.get_edge_data(node, successor)
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
             elif node_type == "root":
                 init_dist = self.init_dist(attr["dist"], self.DiGraph.nodes[node]["input"])
                 attr["log_lik"] = self.loglik(init_dist, attr["value"])
