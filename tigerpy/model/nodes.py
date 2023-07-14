@@ -19,6 +19,8 @@ from .model import (
     Lpred,
     Hyper,
     Param,
+    Dist,
+    Obs,
     Array,
     Distribution
 )
@@ -43,13 +45,13 @@ class ModelGraph:
         self.DiGraph.nodes["response"]["node_type"] = "root"
         self.DiGraph.nodes["response"]["input"] = {}
 
-    def add_strong_node(self, name: str, input: Any) -> None:
+    def add_strong_node(self, name: str, input: Param) -> None:
         """
         Method to add a strong node to the DAG. Strong nodes have a probability distribution.
 
         Args:
             name (str): Name of the node. Key of kwinputs.
-            input (Any): Class param. Value of kwinputs.
+            input (Param): Class Param.
         """
 
         attr = {"dim": input.dim,
@@ -57,19 +59,21 @@ class ModelGraph:
                  "value": input.value,
                  "bijector": input.function,
                  "dist": input.distribution.get_dist(),
+                 "fixed_params": input.distribution.fixed_params,
                  "log_prior": input.log_prior}
         self.DiGraph.add_node(name, attr=attr)
         self.DiGraph.nodes[name]["node_type"] = "strong"
         self.DiGraph.nodes[name]["input"] = {}
+        self.DiGraph.nodes[name]["input_fixed"] = True
 
-    def add_lpred_node(self, name: str, input: Any) -> None:
+    def add_lpred_node(self, name: str, input: Lpred) -> None:
         """
         Method to add a linear predictor (lpred) node to the DAG. Lpred nodes are linear predictors
         with a bijector function (inverse link function).
 
         Args:
             name (str): Name of the weak node.
-            input (Any): Jax.numpy bijector.
+            input (Lpred): Class Lpred.c
         """
 
         attr = {"value": input.value,
@@ -78,31 +82,79 @@ class ModelGraph:
         self.DiGraph.nodes[name]["node_type"] = "lpred"
         self.DiGraph.nodes[name]["input"] = {}
 
-    def add_fixed_node(self, name: str, input:Any) -> None:
+    def add_fixed_node(self, name: str, input: Obs) -> None:
         """
         Method to add a fixed node to the DAG. Fixed nodes are design matrices.
 
         Args:
             name (str): Name of the fixed node.
-            input (Any): Jax.numpy array.
+            input (Obs): Class Obs.
         """
 
         attr = {"value": input.design_matrix}
         self.DiGraph.add_node(name, attr=attr)
         self.DiGraph.nodes[name]["node_type"] = "fixed"
 
-    def add_hyper_node(self, name:str, input: Any) -> None:
+    def add_hyper_node(self, name: str, input: Hyper) -> None:
         """
         Method to add a hyperparameter node.
 
         Args:
             name (str): Name of the hyperparameter node.
-            input (Any): Jax.numpy array.
+            input (Hyper): Class Hyper.
         """
 
         attr = {"value": input.value}
         self.DiGraph.add_node(name, attr=attr)
         self.DiGraph.nodes[name]["node_type"] = "hyper"
+
+    def init_dist(self, dist: Distribution,
+                  input: dict,
+                  fixed_params: dict | None = None) -> Distribution:
+        """
+        Method to initialize the probability distribution of a strong node (one with a probability distribution).
+
+        Args:
+            dist (Distribution): A tensorflow probability distribution.
+            input (dict): Key, value pair, where keys should match the names of the parameters of
+            the distribution.
+
+        Returns:
+            Distribution: A initialized tensorflow probability distribution.
+        """
+
+        if fixed_params is None:
+            return dist(**input)
+        else:
+            return dist(**input, **fixed_params)
+
+
+    def init_traversal(self) -> None:
+        """
+        Method to initialize the traversal order for the topological sort algorithm.
+        """
+
+        self.traversal_order = list(nx.topological_sort(self.DiGraph))
+
+    def init_update_traversal(self) -> None:
+        """
+        Method to filter out all probabilistic nodes and linear predictor nodes from the traversal order.
+        """
+
+        for node in self.traversal_order:
+            node_type = self.DiGraph.nodes[node].get("node_type")
+            if node_type in ["strong", "lpred", "root"]:
+                self.update_traversal_order.append(node)
+
+    def init_prob_traversal(self) -> None:
+        """
+        Method to filter out all probabilistic nodes from the traversal order.
+        """
+
+        for node in self.traversal_order:
+            node_type = self.DiGraph.nodes[node].get("node_type")
+            if node_type in ["strong", "root"]:
+                self.prob_traversal_order.append(node)
 
     def update_lpred(self, node: str, attr: dict) -> Array:
         """
@@ -150,48 +202,6 @@ class ModelGraph:
             transformed = sample
 
         return transformed
-
-    def init_dist(self, dist: Distribution, input: dict) -> Distribution:
-        """
-        Method to initialize the probability distribution of a strong node (one with a probability distribution).
-
-        Args:
-            dist (Distribution): A tensorflow probability distribution.
-            input (dict): Key, value pair, where keys should match the names of the parameters of
-            the distribution.
-
-        Returns:
-            Distribution: A initialized tensorflow probability distribution.
-        """
-
-        return dist(**input)
-
-    def init_traversal(self) -> None:
-        """
-        Method to initialize the traversal order for the topological sort algorithm.
-        """
-
-        self.traversal_order = list(nx.topological_sort(self.DiGraph))
-
-    def init_update_traversal(self) -> None:
-        """
-        Method to filter out all probabilistic nodes and linear predictor nodes from the traversal order.
-        """
-
-        for node in self.traversal_order:
-            node_type = self.DiGraph.nodes[node].get("node_type")
-            if node_type in ["strong", "lpred", "root"]:
-                self.update_traversal_order.append(node)
-
-    def init_prob_traversal(self) -> None:
-        """
-        Method to filter out all probabilistic nodes from the traversal order.
-        """
-
-        for node in self.traversal_order:
-            node_type = self.DiGraph.nodes[node].get("node_type")
-            if node_type in ["strong", "root"]:
-                self.prob_traversal_order.append(node)
 
     def logprior(self, dist: Distribution, sample: Array) -> Array:
         """
@@ -253,6 +263,8 @@ class ModelGraph:
             node_type = self.DiGraph.nodes[node]["node_type"]
             attr = self.DiGraph.nodes[node]["attr"]
             successors = list(self.DiGraph.successors(node))
+
+            # Question there could also be several sucessors for a node?
             if successors:
                 successor = successors[0]
 
@@ -261,29 +273,94 @@ class ModelGraph:
 
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+
             elif node_type == "fixed":
                 input = attr["value"]
 
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+
             elif node_type == "lpred":
                 attr["value"] = self.update_lpred(node, attr)
                 input = attr["value"]
 
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+
             elif node_type == "strong":
-                attr["dist"] = self.init_dist(attr["dist"], self.DiGraph.nodes[node]["input"])
+
                 attr["internal_value"] = sample[node]
                 attr["value"] = self.update_param_value(attr, sample[node])
-                attr["log_prior"] = self.logprior(attr["dist"], attr["value"])
-                input = attr["value"]
 
+                for predecessor in self.DiGraph.predecessors(node):
+                    if self.DiGraph.nodes[predecessor]["node_type"] != "hyper":
+                        self.DiGraph.nodes[node]["input_fixed"] = False
+                        break
+
+                if self.DiGraph.nodes[node]["input_fixed"]:
+                    attr["dist"] = self.init_dist(dist=attr["dist"],
+                                                  input=self.DiGraph.nodes[node]["input"],
+                                                  fixed_params=attr["fixed_params"])
+                else:
+                    init_dist = self.init_dist(dist=attr["dist"],
+                                               input=self.DiGraph.nodes[node]["input"],
+                                               fixed_params=attr["fixed_params"])
+                    attr["log_prior"] = self.logprior(init_dist, attr["value"])
+
+                input = attr["value"]
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+
             elif node_type == "root":
                 init_dist = self.init_dist(attr["dist"], self.DiGraph.nodes[node]["input"])
                 attr["log_lik"] = self.loglik(init_dist, attr["value"])
+
+    def build_graph_recursive(self, obj: Any, parent_node: str, node_name: str,
+                              params: dict) -> None:
+
+        if isinstance(obj, Lpred):
+            # Lpred case
+            self.add_lpred_node(name=node_name, input=obj)
+            self.DiGraph.add_edge(node_name, parent_node, role=node_name,
+                                  bijector=obj.function)
+            name_fixed = obj.Obs.name
+            self.add_fixed_node(name=name_fixed, input=obj)
+            self.DiGraph.add_edge(name_fixed, node_name, role="fixed")
+
+        elif isinstance(obj, Param):
+            # Param case
+            name_param = obj.name
+            self.add_strong_node(name=name_param, input=obj)
+            self.DiGraph.add_edge(name_param, parent_node, role=node_name)
+            node_name = name_param
+            params[name_param] = obj.internal_value
+
+        elif isinstance(obj, Hyper):
+            # Hyper case
+            name_hyper = obj.name
+            self.add_hyper_node(name=name_hyper, input=obj)
+            self.DiGraph.add_edge(name_hyper, parent_node, role=node_name)
+
+        #if isinstance(obj, (list, tuple)):
+        #    for item in obj:
+        #        self.build_graph_recursive(obj=item,
+        #                                   parent_node=parent_node,
+        #                                   node_name=node_name,
+        #                                   params=params)
+
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                self.build_graph_recursive(obj=value,
+                                           parent_node=node_name,
+                                           node_name=key,
+                                           params=params)
+
+        elif hasattr(obj, "__dict__"):
+            for value in obj.__dict__.values():
+                self.build_graph_recursive(obj=value,
+                                           parent_node=parent_node,
+                                           node_name=node_name,
+                                           params=params)
 
     def build_graph(self) -> None:
         """
@@ -296,49 +373,13 @@ class ModelGraph:
         # Initialize the root of the graph
         self.add_root()
 
-        # Build graph by searching through the classes
-        for kw1, input1 in self.Model.response_dist.kwinputs.items():
-            if isinstance(input1, Lpred):
-                self.add_lpred_node(name=kw1, input=input1)
-                self.DiGraph.add_edge(kw1, "response", role=kw1, bijector=input1.function)
-                name = input1.Obs.name
-                self.add_fixed_node(name=name, input=input1)
-                self.DiGraph.add_edge(name, kw1, role="fixed")
+        # if isinstance(obj, Lpred):
 
-                for kw2, input2 in input1.kwinputs.items():
-                    self.add_strong_node(name=kw2, input=input2)
-                    self.DiGraph.add_edge(kw2, kw1, role=kw2)
-
-                    for kw3, input3 in input2.distribution.kwinputs.items():
-                        if isinstance(input3, Hyper):
-                            name_hyper = input3.name
-                            self.add_hyper_node(name=name_hyper, input=input3)
-                            self.DiGraph.add_edge(name_hyper, kw2, role=kw3)
-                        elif isinstance(input3, Param):
-                            name_param = input3.name
-                            self.add_strong_node(name=name_param, input=input3)
-                            self.DiGraph.add_edge(name_param, kw2, role=kw3)
-
-                            for kw4, input4 in input3.distribution.kwinputs.items():
-                                name_hyper = input4.name
-                                self.add_hyper_node(name=name_hyper, input=input4)
-                                self.DiGraph.add_edge(name_hyper, name_param, role=kw4)
-
-                            params[name_param] = input3.internal_value
-
-                    params[kw2] = input2.internal_value
-
-            elif isinstance(input1, Param):
-                name_param = input1.name
-                self.add_strong_node(name=name_param, input=input1)
-                self.DiGraph.add_edge(name_param, "response", role=kw1)
-
-                for kw2, input2 in input1.distribution.kwinputs.items():
-                    name_hyper = input2.name
-                    self.add_hyper_node(name=name_hyper, input=input2)
-                    self.DiGraph.add_edge(name_hyper, name_param, role=kw2)
-
-                params[name_param] = input1.internal_value
+        # Build graph by searching recursively through the classes
+        self.build_graph_recursive(obj=self.Model.response_dist,
+                                   parent_node="response",
+                                   node_name="response",
+                                   params=params)
 
         # Obtain the traversal order for the initialization of the graph
         self.init_traversal()
@@ -352,12 +393,17 @@ class ModelGraph:
         # Initialize the full graph once
         self.init_graph(params)
 
+        self.params = params
+
+
     def update_graph(self, sample: dict) -> None:
 
         for node in self.update_traversal_order:
             node_type = self.DiGraph.nodes[node]["node_type"]
             attr = self.DiGraph.nodes[node]["attr"]
             successors = list(self.DiGraph.successors(node))
+
+            # Question there could also be several sucessors for a node?
             if successors:
                 successor = successors[0]
 
@@ -367,15 +413,24 @@ class ModelGraph:
 
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+
             elif node_type == "strong":
                 attr["value"] = self.update_param_value(attr, sample[node])
-                attr["log_prior"] = self.logprior(attr["dist"], attr["value"])
-                input = attr["value"]
+                if self.DiGraph.nodes[node]["input_fixed"]:
+                    attr["log_prior"] = self.logprior(attr["dist"], attr["value"])
+                else:
+                    init_dist = self.init_dist(dist=attr["dist"],
+                                               input=self.DiGraph.nodes[node]["input"],
+                                               fixed_params=attr["fixed_params"])
+                    attr["log_prior"] = self.logprior(init_dist, attr["value"])
 
+                input = attr["value"]
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+
             elif node_type == "root":
-                init_dist = self.init_dist(attr["dist"], self.DiGraph.nodes[node]["input"])
+                init_dist = self.init_dist(dist=attr["dist"],
+                                           input=self.DiGraph.nodes[node]["input"])
                 attr["log_lik"] = self.loglik(init_dist, attr["value"])
 
     def visualize_graph(self) -> None:
