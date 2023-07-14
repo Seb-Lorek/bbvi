@@ -24,7 +24,7 @@ class Model:
     Static model.
     """
 
-    def __init__(self, response: Array, distribution: Distribution) -> None:
+    def __init__(self, response: Array, distribution: Distribution):
         self.response = jnp.asarray(response, dtype=jnp.float32)
         self.response_dist = distribution
         self.log_lik = self.loglik()
@@ -52,6 +52,7 @@ class Model:
             Array: Log-prior of the model.
         """
 
+        # Obtain all logprior arrays from the model
         prior_list = self.return_param_logpriors(self.response_dist)
 
         # concatenate the flattened arrays
@@ -82,18 +83,19 @@ class Model:
         """
 
         l = []
+
         if isinstance(obj, Param):
             l.extend([obj.log_prior])
 
-        if isinstance(obj, (list, tuple)):
+        elif isinstance(obj, (list, tuple)):
             for item in obj:
                 l.extend(self.return_param_logpriors(item))
 
-        if isinstance(obj, dict):
+        elif isinstance(obj, dict):
             for value in obj.values():
                 l.extend(self.return_param_logpriors(value))
 
-        if hasattr(obj, "__dict__"):
+        elif hasattr(obj, "__dict__"):
             l.extend(self.return_param_logpriors(obj.__dict__))
 
         return l
@@ -118,11 +120,11 @@ class Model:
             for item in obj:
                count += self.count_param_instances(item)
 
-        if isinstance(obj, dict):
+        elif isinstance(obj, dict):
             for value in obj.values():
                 count += self.count_param_instances(value)
 
-        if hasattr(obj, "__dict__"):
+        elif hasattr(obj, "__dict__"):
             count += self.count_param_instances(obj.__dict__)
 
         return count
@@ -132,7 +134,7 @@ class Hyper:
     Hyperparameter.
     """
 
-    def __init__(self, value: Array, name: str = "") -> None:
+    def __init__(self, value: Array, name: str = ""):
         self.value = jnp.asarray(value)
         self.name = name
 
@@ -147,6 +149,8 @@ class Dist:
     def __init__(self, distribution: Distribution, **kwinputs: Any):
         self.distribution = distribution
         self.kwinputs = kwinputs
+        self.fixed_params = {kw: input for kw, input in self.kwinputs.items()
+                             if not isinstance(input, (Hyper, Param, Lpred))} or None
 
     def init_dist(self) -> Distribution:
         """
@@ -156,7 +160,7 @@ class Dist:
             Distribution: A initialized tensorflow probability distribution.
         """
 
-        kwargs = {kw: input.value for kw, input in self.kwinputs.items()}
+        kwargs = {kw: input.value if isinstance(input, (Hyper, Param, Lpred)) else input for kw, input in self.kwinputs.items()}
         dist = self.distribution(**kwargs)
         return dist
 
@@ -176,20 +180,20 @@ class Param:
     Parameter.
     """
 
-    def __init__(self, value: Array, distribution: Dist, function: Any = None, name: str = "") -> None:
+    def __init__(self, internal_value: Array, distribution: Dist, function: Any = None, name: str = ""):
         self.distribution = distribution
         self.function = function
         self.name = name
-        self.internal_value = jnp.atleast_1d(value)
+        self.internal_value = jnp.atleast_1d(internal_value)
         self.value = self.init_value(self.internal_value)
         self.dim = self.value.shape
         self.log_prior = self.logprior(value=self.value)
 
-    def init_value(self, value):
+    def init_value(self, interal_value):
         if self.function is not None:
-            transform = self.function(value)
+            transform = self.function(interal_value)
         else:
-            transform = jnp.atleast_1d(value)
+            transform = jnp.atleast_1d(interal_value)
         return transform
 
     def logprior(self, value: Array) -> Array:
@@ -212,7 +216,7 @@ class Lpred:
     Linear predictor.
     """
 
-    def __init__(self, Obs: Obs, function: Any = None, **kwinputs: Any) -> None:
+    def __init__(self, Obs: Obs, function: Any = None, **kwinputs: Any):
         self.Obs = Obs
         self.function = function
         self.kwinputs = kwinputs
@@ -233,9 +237,9 @@ class Lpred:
         for kw, input in self.kwinputs.items():
             arrays.append(input.value)
 
-        x = jnp.concatenate(arrays, dtype=jnp.float32)
+        params = jnp.concatenate(arrays, dtype=jnp.float32)
 
-        return x
+        return params
 
     def update_lpred(self) -> Array:
         """

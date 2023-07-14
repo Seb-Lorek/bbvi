@@ -9,12 +9,14 @@ from ..utils import (
 
 from ..model.observation import Obs
 
+from functools import cached_property
 from typing import Any
 Array = Any
 
 import jax
 import jax.numpy as jnp
-import tensorflow_probability.substrates.jax.distributions as tfd
+import tensorflow_probability.substrates.jax.distributions as tfjd
+from tensorflow_probability.python.internal import reparameterization
 
 def _rank(eigenvalues: Array, tol: float = 1e-6) -> Array | float:
     """
@@ -53,28 +55,67 @@ def _log_pdet(eigenvalues: Array, rank: Array | float | None = None,
     log_pdet = jnp.sum(jnp.log(selected), axis=-1)
     return log_pdet
 
-# (tfd.Distribution)
-class MulitvariateNormalDegenerate:
+class MulitvariateNormalDegenerate(tfjd.Distribution):
 
-    def __init__(self, loc: Array, scale: Array, rwk: int = 2,
-                 rank: int = None,
-                 log_pdet: float = None, tol: float = 1e-6):
-        self.loc = loc
-        self.scale = scale
-        self.random_walk_order = rwk
-        self.rank = rank
-        self.log_pdet = log_pdet
-        self.tol = tol
-        self.dim = loc.shape[0]
+    def __init__(self,
+                 loc: Array,
+                 scale: Array,
+                 pen: Array,
+                 validate_args: bool = False,
+                 allow_nan_stats: bool = True,
+                 name: str = "MultivariateNormalDegenerate",
+                 tol: float = 1e-6):
 
-        self.diff_mat = jnp.diff(jnp.eye(self.dim), n=self.random_walk_order, axis=0)
-        self.prec = dot(self.diff_mat.T, self.diff_mat)
-        self.eigenvals = jax.numpy.linalg.eigvalsh(self.prec)
+        parameters = dict(locals())
 
-        self.rank = _rank(eigenvalues=self.eigenvals, tol=self.tol) if self.rank is None else rank
-        self.log_pdet = _log_pdet(eigenvalues=self.eigenvals, rank=self.rank) if self.log_pdet is None else log_pdet
+        self._loc = jnp.atleast_1d(loc)
+        self._scale = jnp.atleast_1d(scale)
+        self._tol = tol
+        self._pen = pen
+        self._prec = pen / (self._scale ** 2)
 
-    def log_prob(self, value):
-        centered_value = value - self.loc
-        logprob = - 0.5 * (self.rank * jnp.log(2*jnp.pi) - self.log_pdet) - 0.5 * quad_prod(self.prec, centered_value)
-        return jnp.atleast_1d(logprob)
+        eigenvals = jnp.linalg.eigvalsh(pen)
+        self._rank = _rank(eigenvalues=eigenvals, tol=tol)
+        log_pdet_pen = _log_pdet(eigenvalues=eigenvals, rank=self._rank)
+        self._log_pdet = log_pdet_pen - self._rank * jnp.log(self._scale ** 2)
+
+        super().__init__(dtype=pen.dtype,
+                         reparameterization_type=reparameterization.FULLY_REPARAMETERIZED,
+                         validate_args=validate_args,
+                         allow_nan_stats=allow_nan_stats,
+                         parameters=parameters,
+                         name=name)
+
+    @cached_property
+    def eigenvals(self) -> Array:
+        """Eigenvalues of the distribution's precision matrices."""
+        return jnp.linalg.eigvalsh(self._prec)
+
+    @cached_property
+    def rank(self) -> Array | float:
+        """Ranks of the distribution's precision matrices."""
+        eigenvals = self.eigenvals
+        return _rank(eigenvals, tol=self._tol)
+
+    @cached_property
+    def log_pdet(self) -> Array | float:
+        """Log-pseudo-determinants of the distribution's precision matrices."""
+        eigenvals = self.eigenvals
+        return _log_pdet(eigenvals, self._rank, tol=self._tol)
+
+    @property
+    def prec(self) -> Array:
+        """Precision matrices."""
+        return self._prec
+
+    @property
+    def loc(self) -> Array:
+        """Locations."""
+        return self._loc
+
+    def log_prob(self, x: Array) -> Array | float:
+        x_centerd = x - self._loc
+
+        prob1 = - quad_prod(self._prec, x_centerd)
+        prob2 = self._rank * jnp.log(2 * jnp.pi) - self._log_pdet
+        return 0.5 * (prob1 - prob2)

@@ -13,7 +13,7 @@ class Obs:
     """
     Observations.
     """
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str):
         self.design_matrix = None
         self.data = None
         self.fixed_data = None
