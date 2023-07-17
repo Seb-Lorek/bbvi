@@ -55,6 +55,7 @@ def _log_pdet(eigenvalues: Array, rank: Array | float | None = None,
     log_pdet = jnp.sum(jnp.log(selected), axis=-1)
     return log_pdet
 
+# must be adjusted to allow for batching
 class MulitvariateNormalDegenerate(tfjd.Distribution):
 
     def __init__(self,
@@ -114,6 +115,9 @@ class MulitvariateNormalDegenerate(tfjd.Distribution):
         return self._loc
 
     def log_prob(self, x: Array) -> Array | float:
+        """
+        Method to calculate the log-probability.
+        """
         x_centerd = x - self._loc
 
         prob1 = - quad_prod(self._prec, x_centerd)

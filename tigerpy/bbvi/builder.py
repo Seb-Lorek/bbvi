@@ -14,9 +14,13 @@ import matplotlib.pyplot as plt
 import functools
 from functools import partial
 
-from typing import List, Dict, Tuple, NamedTuple, Callable
-
-from .variational import Variational
+from typing import (
+    List,
+    Dict,
+    Tuple,
+    NamedTuple,
+    Callable
+    )
 
 from ..model.model import (
     Array,
@@ -40,7 +44,7 @@ class Bbvi:
     Inference algorithm.
     """
 
-    def __init__(self, Graph: ModelGraph, num_samples: int, num_iterations: int, key: Any) -> None:
+    def __init__(self, Graph: ModelGraph, num_samples: int, num_iterations: int, key: int) -> None:
         self.Graph = Graph
         self.DiGraph = Graph.DiGraph
         self.Model = Graph.Model
@@ -53,6 +57,7 @@ class Bbvi:
 
         self.set_variational_params()
 
+    # Still work in progress
     def set_variational_params_test(self) -> None:
 
         included = []
@@ -74,6 +79,7 @@ class Bbvi:
                 else:
                     self.variational_params[node] = self.init_variational_params(node)
 
+    # Still work in progress
     def init_variational_params_test(self, joint_nodes: str):
         nodes = joint_nodes.split("_")
         mu = []
@@ -107,7 +113,7 @@ class Bbvi:
 
         Args:
             attr (Any): Attributes of a parameter node.
-            input (Any): Input data that is passed from child notes to parents.
+            input (Any): Input data that is passed from child nodes to parents.
 
         Returns:
             Dict: The initial interal variational parameters.
@@ -120,7 +126,7 @@ class Bbvi:
 
     def pass_samples(self, samples: Dict) -> Array:
         """
-        Method to pass the samples from method lower_bound to the logprob method.
+        Method to pass the samples from method lower_bound to the Graph.logprob() method.
 
         Args:
             samples (Dict): Samples from the variational distribution for the parameters of the model in a dictionary.
@@ -161,57 +167,54 @@ class Bbvi:
             arrays.append(entropy)
 
         means = jnp.concatenate(arrays)
-
         elbo = jnp.mean(self.pass_samples(samples)) - jnp.sum(means)
-        return -elbo
 
-    @partial(jax.jit, static_argnums=(0,1))
-    def bbvi_scan(self, chunk_size: int, bbvi_state: BbviState) -> Tuple[BbviState, jnp.array]:
-
-        def bbvi_body(state, i, lower_bound, get_params, opt_update):
-            value, grads = jax.value_and_grad(lower_bound)(get_params(state.opt_state))
-            opt_state = opt_update(i, grads, state.opt_state)
-
-            return BbviState(state.seed, opt_state), -value
-
-         # pass self.lower_bound, self.get_params, self.opt_update as arguments to bbvi_body
-        bbvi_body = functools.partial(bbvi_body, lower_bound=self.lower_bound, get_params=self.get_params, opt_update=self.opt_update)
-
-        scan_input = jnp.arange(chunk_size)
-        new_state, elbo_chunk = jax.lax.scan(bbvi_body, bbvi_state, scan_input)
-
-        return new_state, elbo_chunk
+        return - elbo
 
     def run_bbvi(self, step_size: float = 0.001, threshold: float = 1e-5, chunk_size: int = 1) -> Tuple:
         """
-        Method to start the stochastic optimization. The implementation ueses adam.
+        Method to start the stochastic optimization. The implementation uses adam.
 
         Args:
-            step_size (float, optional): Step size or sometimes also learning rate of the adam optimizer. Defaults to 0.01.
+            step_size (float, optional): Step size or sometimes also learning rate of the adam optimizer. Defaults to 0.001.
 
         Returns:
-            Tuple: Last negative ELBO and the optimized variational parameters in a dictionary.
+            Tuple: Last ELBO and the optimized variational parameters in a dictionary.
         """
 
-        self.opt_init, self.opt_update, self.get_params = optimizers.adam(step_size=step_size)
-        opt_state = self.opt_init(self.variational_params)
+        opt_init, opt_update, get_params = optimizers.adam(step_size=step_size)
+        opt_state = opt_init(self.variational_params)
+
+        def bbvi_body(state, step):
+            value, grads = jax.value_and_grad(self.lower_bound)(get_params(state.opt_state))
+            opt_state = opt_update(step, grads, state.opt_state)
+
+            return BbviState(state.seed, opt_state), -value
+
+        @partial(jax.jit, static_argnums=0)
+        def bbvi_scan(chunk_size: int, bbvi_state: BbviState) -> Tuple[BbviState, jnp.array]:
+
+            scan_input = jnp.arange(chunk_size)
+            new_state, elbo_chunk = jax.lax.scan(bbvi_body, bbvi_state, scan_input)
+
+            return new_state, elbo_chunk
 
         seed = jax.random.PRNGKey(self.key)
         state = BbviState(seed, opt_state)
         elbo_chunks = []
 
         for _ in range(self.num_iterations // chunk_size):
-            state, elbo_chunk = self.bbvi_scan(chunk_size, state)
+            state, elbo_chunk = bbvi_scan(chunk_size, state)
             elbo_chunks.append(elbo_chunk)
             elbo_delta = abs(elbo_chunk[-1] - elbo_chunk[-2]) if len(elbo_chunk) > 1 else jnp.inf
             if elbo_delta < threshold:
                 break
 
-        elbo_history = jnp.concatenate(elbo_chunks)
-        self.elbo_history["elbo"] = elbo_history
-        self.elbo_history["iter"] = jnp.arange(len(elbo_history))
-        self.variational_params = self.get_params(state.opt_state)
+        self.elbo_history["elbo"] = jnp.concatenate(elbo_chunks)
+        self.elbo_history["iter"] = jnp.arange(len(self.elbo_history["elbo"]))
+        self.variational_params = get_params(state.opt_state)
         self.set_opt_variational_params()
+
         return self.elbo_history["elbo"][-1], self.opt_variational_params
 
     def set_opt_variational_params(self):
