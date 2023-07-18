@@ -17,6 +17,7 @@ import jax
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax.distributions as tfjd
 from tensorflow_probability.python.internal import reparameterization
+from tensorflow_probability.substrates.jax import tf2jax as tf
 
 def _rank(eigenvalues: Array, tol: float = 1e-6) -> Array | float:
     """
@@ -69,11 +70,34 @@ class MulitvariateNormalDegenerate(tfjd.Distribution):
 
         parameters = dict(locals())
 
-        self._loc = jnp.atleast_1d(loc)
-        self._scale = jnp.atleast_1d(scale)
         self._tol = tol
         self._pen = pen
-        self._prec = pen / (self._scale ** 2)
+        self._scale = jnp.atleast_1d(scale)
+        prec = pen / jnp.expand_dims(scale ** 2, axis=(-2, -1))
+        loc = jnp.atleast_1d(loc)
+
+        if not prec.shape[-2] == prec.shape[-1]:
+            raise ValueError(
+                "`prec` must be square (the last two dimensions must be equal)."
+            )
+
+        try:
+            jnp.broadcast_shapes(prec.shape[-1], loc.shape[-1])
+        except ValueError:
+            raise ValueError(
+                f"The event sizes of `prec` ({prec.shape[-1]}) and `loc` "
+                f"({loc.shape[-1]}) cannot be broadcast together. If you "
+                "are trying to use batches for `loc`, you may need to add a "
+                "dimension for the event size."
+            )
+
+        prec_batches = jnp.shape(prec)[:-2]
+        loc_batches = jnp.shape(loc)[:-1]
+        self._broadcast_batch_shape = jnp.broadcast_shapes(prec_batches, loc_batches)
+        nbatch = len(self.batch_shape)
+
+        self._prec = jnp.expand_dims(prec, tuple(range(nbatch - len(prec_batches))))
+        self._loc = jnp.expand_dims(loc, tuple(range(nbatch - len(loc_batches))))
 
         eigenvals = jnp.linalg.eigvalsh(pen)
         self._rank = _rank(eigenvalues=eigenvals, tol=tol)
@@ -119,7 +143,13 @@ class MulitvariateNormalDegenerate(tfjd.Distribution):
         Method to calculate the log-probability.
         """
         x_centerd = x - self._loc
+        # necessary for correct broadcasting in the quadratic form
+        x_centerd = jnp.expand_dims(x_centerd, axis=-2)
+        x_centerd_T = jnp.swapaxes(x_centerd, -2, -1)
 
-        prob1 = - quad_prod(self._prec, x_centerd)
+        prob1 = - jnp.squeeze(x_centerd @ self._prec @ x_centerd_T, axis=(-2, -1))
         prob2 = self._rank * jnp.log(2 * jnp.pi) - self._log_pdet
         return 0.5 * (prob1 - prob2)
+
+    def _batch_shape(self):
+        return tf.TensorShape(self._broadcast_batch_shape)

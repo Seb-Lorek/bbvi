@@ -205,7 +205,7 @@ class Bbvi:
 
         for _ in range(self.num_iterations // chunk_size):
             state, elbo_chunk = bbvi_scan(chunk_size, state)
-            elbo_chunks.append(elbo_chunk)
+            elbo_chunks.extend([elbo_chunk])
             elbo_delta = abs(elbo_chunk[-1] - elbo_chunk[-2]) if len(elbo_chunk) > 1 else jnp.inf
             if elbo_delta < threshold:
                 break

@@ -9,7 +9,6 @@ from typing import Any
 
 Array = Any
 
-@jit
 def dot(x: Array, y: Array) -> Array:
     """
     Function to calculate matix/dot products.
@@ -23,7 +22,6 @@ def dot(x: Array, y: Array) -> Array:
     """
     return jnp.dot(x, y)
 
-@jit
 def quad_prod(A: Array, x: Array) -> Array:
     """
     Function to calculate quadratic forms.
