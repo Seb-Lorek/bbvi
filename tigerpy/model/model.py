@@ -15,16 +15,12 @@ Distribution = Union[tfjd.Distribution, tfnd.Distribution]
 
 from .observation import Obs
 
-from ..utils import (
-    dot
-)
-
 class Model:
     """
     Static model.
     """
 
-    def __init__(self, response: Array, distribution: Distribution):
+    def __init__(self, response: Array, distribution):
         self.response = jnp.asarray(response, dtype=jnp.float32)
         self.response_dist = distribution
         self.log_lik = self.loglik()
@@ -58,7 +54,7 @@ class Model:
         # concatenate the flattened arrays
         log_prior = jnp.concatenate(prior_list)
 
-        return jnp.sum(log_prior)
+        return log_prior
 
     def logprob(self) -> Array:
         """
@@ -68,7 +64,7 @@ class Model:
             Array: Log-probability of the model.
         """
 
-        return jnp.sum(self.log_lik) + self.log_prior
+        return jnp.sum(self.log_lik) + jnp.sum(self.log_prior)
 
     def return_param_logpriors(self, obj: Any) -> list:
         """
@@ -85,7 +81,7 @@ class Model:
         l = []
 
         if isinstance(obj, Param):
-            l.extend([obj.log_prior])
+            l.append(obj.log_prior)
 
         elif isinstance(obj, (list, tuple)):
             for item in obj:
@@ -193,7 +189,7 @@ class Param:
         if self.function is not None:
             transform = self.function(interal_value)
         else:
-            transform = jnp.atleast_1d(interal_value)
+            transform = interal_value
         return transform
 
     def logprior(self, value: Array) -> Array:
@@ -250,7 +246,7 @@ class Lpred:
             Array: Value of the linear predictor.
         """
 
-        nu = dot(self.design_matrix, self.params_values)
+        nu = jnp.dot(self.design_matrix, self.params_values)
 
         if self.function is not None:
             m = self.function(nu)

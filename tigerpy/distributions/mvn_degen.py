@@ -2,11 +2,6 @@
 The degenerate, i.e. rank-deficient, multivariate normal distribution.
 """
 
-from ..utils import (
-    dot,
-    quad_prod
-)
-
 from ..model.observation import Obs
 
 from functools import cached_property
@@ -56,8 +51,7 @@ def _log_pdet(eigenvalues: Array, rank: Array | float | None = None,
     log_pdet = jnp.sum(jnp.log(selected), axis=-1)
     return log_pdet
 
-# must be adjusted to allow for batching
-class MulitvariateNormalDegenerate(tfjd.Distribution):
+class MultivariateNormalDegenerate(tfjd.Distribution):
 
     def __init__(self,
                  loc: Array,
@@ -72,7 +66,7 @@ class MulitvariateNormalDegenerate(tfjd.Distribution):
 
         self._tol = tol
         self._pen = pen
-        self._scale = jnp.atleast_1d(scale)
+        self._scale = scale
         prec = pen / jnp.expand_dims(scale ** 2, axis=(-2, -1))
         loc = jnp.atleast_1d(loc)
 
@@ -151,5 +145,14 @@ class MulitvariateNormalDegenerate(tfjd.Distribution):
         prob2 = self._rank * jnp.log(2 * jnp.pi) - self._log_pdet
         return 0.5 * (prob1 - prob2)
 
+    def _event_shape(self):
+        return tf.TensorShape((jnp.shape(self._prec)[-1],))
+
+    def _event_shape_tensor(self):
+        return jnp.array((jnp.shape(self._prec)[-1],), dtype=jnp.int32)
+
     def _batch_shape(self):
         return tf.TensorShape(self._broadcast_batch_shape)
+
+    def _batch_shape_tensor(self):
+        return jnp.array(self._broadcast_batch_shape, dtype=jnp.int32)

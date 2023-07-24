@@ -2,17 +2,14 @@
 Directed Graph.
 """
 
+import jax
 import jax.numpy as jnp
 
 import networkx as nx
 import matplotlib.pyplot as plt
 import re
 
-from typing import Any
-
-from ..utils import (
-    dot
-)
+from typing import Any, Union
 
 from .model import (
     Model,
@@ -156,7 +153,7 @@ class ModelGraph:
             if node_type in ["strong", "root"]:
                 self.prob_traversal_order.append(node)
 
-    def update_lpred(self, node: str, attr: dict) -> Array:
+    def update_lpred(self, node: str, attr: dict, idx: Union[Array, None] = None) -> Array:
         """
         Method to calculate the value of linear predictor node.
 
@@ -169,11 +166,20 @@ class ModelGraph:
         """
 
         bijector = attr["bijector"]
-        design_matrix = self.DiGraph.nodes[node]["input"]["fixed"]
-        input = self.DiGraph.nodes[node]["input"]
-        values_params = jnp.concatenate([input for key, input in input.items() if key != "fixed"])
+        if idx is not None:
+            design_matrix = self.DiGraph.nodes[node]["input"]["fixed"][idx,]
+        else:
+            design_matrix = self.DiGraph.nodes[node]["input"]["fixed"]
+        design_matrix = jnp.expand_dims(design_matrix, 0)
 
-        nu = dot(design_matrix, values_params)
+        input = self.DiGraph.nodes[node]["input"]
+
+        values_params = jnp.concatenate([input for key, input in input.items() if key != "fixed"], axis=-1)
+        values_params = jnp.expand_dims(values_params, -1)
+
+        nu = jnp.matmul(design_matrix, values_params)
+        nu = jnp.squeeze(nu, axis=-1)
+
 
         if bijector is not None:
             transformed = bijector(nu)
@@ -182,7 +188,7 @@ class ModelGraph:
 
         return transformed
 
-    def update_param_value(self, attr: dict, sample: Array) -> Array:
+    def update_param_value(self, attr: dict, samples: Array) -> Array:
         """
         Method to calculate the value attribute of a parameter node using samples from a variational distribution for a parameter in the DAG.
 
@@ -197,9 +203,9 @@ class ModelGraph:
         bijector = attr["bijector"]
 
         if bijector is not None:
-            transformed = bijector(sample)
+            transformed = bijector(samples)
         else:
-            transformed = sample
+            transformed = samples
 
         return transformed
 
@@ -217,7 +223,7 @@ class ModelGraph:
 
         return dist.log_prob(sample)
 
-    def loglik(self, dist: Distribution, value: Array) -> Array:
+    def loglik(self, dist: Distribution, value: Array, idx: Union[Array, None] = None) -> Array:
         """
         Method to calculate the log-likelihood of the response (root node).
 
@@ -229,7 +235,12 @@ class ModelGraph:
             Array: Log-likelihood of the response.
         """
 
-        return dist.log_prob(value)
+        if idx is not None:
+            log_lik = dist.log_prob(value[idx])
+        else:
+            log_lik = dist.log_prob(value)
+
+        return log_lik
 
     def logprob(self) -> Array:
         """
@@ -341,12 +352,12 @@ class ModelGraph:
             self.add_hyper_node(name=name_hyper, input=obj)
             self.DiGraph.add_edge(name_hyper, parent_node, role=node_name)
 
-        #if isinstance(obj, (list, tuple)):
-        #    for item in obj:
-        #        self.build_graph_recursive(obj=item,
-        #                                   parent_node=parent_node,
-        #                                   node_name=node_name,
-        #                                   params=params)
+        if isinstance(obj, (list, tuple)):
+            for item in obj:
+                self.build_graph_recursive(obj=item,
+                                           parent_node=parent_node,
+                                           node_name=node_name,
+                                           params=params)
 
         if isinstance(obj, dict):
             for key, value in obj.items():
@@ -395,8 +406,7 @@ class ModelGraph:
 
         self.params = params
 
-
-    def update_graph(self, sample: dict) -> None:
+    def update_graph(self, samples: dict, idx: Union[Array, None] = None) -> None:
 
         for node in self.update_traversal_order:
             node_type = self.DiGraph.nodes[node]["node_type"]
@@ -408,14 +418,15 @@ class ModelGraph:
                 successor = successors[0]
 
             if node_type == "lpred":
-                attr["value"] = self.update_lpred(node, attr)
+                attr["value"] = self.update_lpred(node, attr, idx)
                 input = attr["value"]
 
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = input
 
             elif node_type == "strong":
-                attr["value"] = self.update_param_value(attr, sample[node])
+                attr["internal_value"] = samples[node]
+                attr["value"] = self.update_param_value(attr, samples[node])
                 if self.DiGraph.nodes[node]["input_fixed"]:
                     attr["log_prior"] = self.logprior(attr["dist"], attr["value"])
                 else:
@@ -425,13 +436,19 @@ class ModelGraph:
                     attr["log_prior"] = self.logprior(init_dist, attr["value"])
 
                 input = attr["value"]
+
+                # Test the dims
+                # print(node + ":", attr["log_prior"].shape)
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = input
 
             elif node_type == "root":
                 init_dist = self.init_dist(dist=attr["dist"],
                                            input=self.DiGraph.nodes[node]["input"])
-                attr["log_lik"] = self.loglik(init_dist, attr["value"])
+                attr["log_lik"] = self.loglik(init_dist, attr["value"], idx)
+
+                # Test the dims
+                # print("response" + ":", attr["log_lik"].shape)
 
     def visualize_graph(self) -> None:
         """

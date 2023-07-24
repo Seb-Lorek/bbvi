@@ -2,4 +2,4 @@
 Extra distributions for JAX-TFP.
 """
 
-from .mvn_degen import MulitvariateNormalDegenerate
+from .mvn_degen import MultivariateNormalDegenerate

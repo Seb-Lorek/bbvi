@@ -31,10 +31,6 @@ from ..model.nodes import(
     ModelGraph
 )
 
-from ..utils import (
-    dot
-)
-
 class BbviState(NamedTuple):
     seed: jax.random.PRNGKey
     opt_state: Any
@@ -44,12 +40,14 @@ class Bbvi:
     Inference algorithm.
     """
 
-    def __init__(self, Graph: ModelGraph, num_samples: int, num_iterations: int, key: int) -> None:
+    def __init__(self, Graph: ModelGraph, key: int, num_samples: int = 64, batch_size: int = 256, num_iterations: int = 5000) -> None:
         self.Graph = Graph
         self.DiGraph = Graph.DiGraph
         self.Model = Graph.Model
         self.num_samples = num_samples
         self.num_iterations = num_iterations
+        self.batch_size = batch_size
+        self.num_obs = self.Model.response.shape[0]
         self.key = key
         self.variational_params = {}
         self.opt_variational_params = {}
@@ -104,10 +102,9 @@ class Bbvi:
             node_type = self.DiGraph.nodes[node].get("node_type")
             if node_type == "strong":
                 attr = self.DiGraph.nodes[node]["attr"]
-                input = self.DiGraph.nodes[node]["input"]
-                self.variational_params[node] = self.init_variational_params(attr, input)
+                self.variational_params[node] = self.init_variational_params(attr)
 
-    def init_variational_params(self, attr: Any, input: Any) -> Dict:
+    def init_variational_params(self, attr: Any) -> Dict:
         """
         Method to initialize the internal variational parameters.
 
@@ -135,16 +132,17 @@ class Bbvi:
             Array: The log-probabilities of the model for all the samples.
         """
 
-        def compute_logprob(i):
-            sample = {key: value[i] for key, value in samples.items()}
+        stacked_samples = {key: jnp.stack(value, axis=0) for key, value in samples.items()}
+
+        def compute_logprob(sample):
             self.Graph.update_graph(sample)
             return self.Graph.logprob()
 
-        logprobs = jax.vmap(compute_logprob)(jnp.arange(self.num_samples))
+        logprobs = jax.vmap(compute_logprob)(stacked_samples)
 
         return logprobs
 
-    def lower_bound(self, variational_params: Dict) -> Array:
+    def lower_bound(self, variational_params: Dict, seed: jax.random.PRNGKey) -> Array:
         """
         Method to calculate the negative ELBO (evidence lower bound).
 
@@ -161,7 +159,7 @@ class Bbvi:
         for kw in variational_params.keys():
             mu, lower_tri = variational_params[kw]["mu"], variational_params[kw]["lower_tri"]
 
-            samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=(self.num_samples), seed=jax.random.PRNGKey(self.key))
+            samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=self.num_samples, seed=seed)
 
             entropy = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(samples[kw]), keepdims=True)
             arrays.append(entropy)
@@ -176,7 +174,10 @@ class Bbvi:
         Method to start the stochastic optimization. The implementation uses adam.
 
         Args:
-            step_size (float, optional): Step size or sometimes also learning rate of the adam optimizer. Defaults to 0.001.
+            step_size (float, optional): Step size of the SGD optimizer (Adam). Defaults to 0.001.
+            threshold (float, optional): Threshold to stop the optimization. Defaults to 1e-5.
+            chunk_size (int, optional): Chunk sizes of to evaluate. Defaults to 1.
+            batch_size (int, optional): Size of batches to compute the ELBO. Defaults to 256.
 
         Returns:
             Tuple: Last ELBO and the optimized variational parameters in a dictionary.
@@ -186,7 +187,7 @@ class Bbvi:
         opt_state = opt_init(self.variational_params)
 
         def bbvi_body(state, step):
-            value, grads = jax.value_and_grad(self.lower_bound)(get_params(state.opt_state))
+            value, grads = jax.value_and_grad(self.lower_bound)(get_params(state.opt_state), state.seed)
             opt_state = opt_update(step, grads, state.opt_state)
 
             return BbviState(state.seed, opt_state), -value
@@ -205,7 +206,7 @@ class Bbvi:
 
         for _ in range(self.num_iterations // chunk_size):
             state, elbo_chunk = bbvi_scan(chunk_size, state)
-            elbo_chunks.extend([elbo_chunk])
+            elbo_chunks.append(elbo_chunk)
             elbo_delta = abs(elbo_chunk[-1] - elbo_chunk[-2]) if len(elbo_chunk) > 1 else jnp.inf
             if elbo_delta < threshold:
                 break
@@ -227,7 +228,7 @@ class Bbvi:
             if node_type == "strong":
                 self.opt_variational_params[node] = {
                         "mu": self.variational_params[node]["mu"],
-                        "cov": dot(self.variational_params[node]["lower_tri"], self.variational_params[node]["lower_tri"].T)
+                        "cov": jnp.dot(self.variational_params[node]["lower_tri"], self.variational_params[node]["lower_tri"].T)
                     }
 
     def plot_elbo(self):
