@@ -145,8 +145,8 @@ class Dist:
     def __init__(self, distribution: Distribution, **kwinputs: Any):
         self.distribution = distribution
         self.kwinputs = kwinputs
-        self.fixed_params = {kw: input for kw, input in self.kwinputs.items()
-                             if not isinstance(input, (Hyper, Param, Lpred))} or None
+        self.fixed_params = {kw: item for kw, item in self.kwinputs.items()
+                             if not isinstance(item, (Hyper, Param, Lpred))} or None
 
     def init_dist(self) -> Distribution:
         """
@@ -156,7 +156,7 @@ class Dist:
             Distribution: A initialized tensorflow probability distribution.
         """
 
-        kwargs = {kw: input.value if isinstance(input, (Hyper, Param, Lpred)) else input for kw, input in self.kwinputs.items()}
+        kwargs = {kw: item.value if isinstance(item, (Hyper, Param, Lpred)) else item for kw, item in self.kwinputs.items()}
         dist = self.distribution(**kwargs)
         return dist
 
@@ -176,21 +176,13 @@ class Param:
     Parameter.
     """
 
-    def __init__(self, internal_value: Array, distribution: Dist, function: Any = None, name: str = ""):
+    def __init__(self, value: Array, distribution: Dist, param_space: Union[str, None] = None, name: str = ""):
+        self.value = jnp.atleast_1d(value)
         self.distribution = distribution
-        self.function = function
+        self.param_space = param_space
         self.name = name
-        self.internal_value = jnp.atleast_1d(internal_value)
-        self.value = self.init_value(self.internal_value)
         self.dim = self.value.shape
         self.log_prior = self.logprior(value=self.value)
-
-    def init_value(self, interal_value):
-        if self.function is not None:
-            transform = self.function(interal_value)
-        else:
-            transform = interal_value
-        return transform
 
     def logprior(self, value: Array) -> Array:
         """
@@ -216,7 +208,7 @@ class Lpred:
         self.Obs = Obs
         self.function = function
         self.kwinputs = kwinputs
-        self.design_matrix = jnp.asarray(self.Obs.design_matrix, dtype=jnp.float32)
+        self.design_matrix = self.Obs.design_matrix
         self.params_values = self.update_params()
         self.value = self.update_lpred()
 
@@ -230,8 +222,8 @@ class Lpred:
         """
 
         arrays = []
-        for kw, input in self.kwinputs.items():
-            arrays.append(input.value)
+        for key, item in self.kwinputs.items():
+            arrays.append(item.value)
 
         params = jnp.concatenate(arrays, dtype=jnp.float32)
 

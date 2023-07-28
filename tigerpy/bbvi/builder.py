@@ -40,13 +40,13 @@ class Bbvi:
     Inference algorithm.
     """
 
-    def __init__(self, Graph: ModelGraph, key: int, num_samples: int = 64, batch_size: int = 256, num_iterations: int = 5000) -> None:
+    def __init__(self, Graph: ModelGraph, key: int, batch_size: int = 256, num_samples: int = 64, num_iterations: int = 5000) -> None:
         self.Graph = Graph
         self.DiGraph = Graph.DiGraph
         self.Model = Graph.Model
         self.num_samples = num_samples
-        self.num_iterations = num_iterations
         self.batch_size = batch_size
+        self.num_iterations = num_iterations
         self.num_obs = self.Model.response.shape[0]
         self.key = key
         self.variational_params = {}
@@ -84,7 +84,7 @@ class Bbvi:
         diag = []
         for node in nodes:
             attr = self.DiGraph.nodes[node]["attr"]
-            input = self.DiGraph.nodes[node]["input"]
+            input_pass = self.DiGraph.nodes[node]["input"]
             mu.append(attr["internal_value"])
             diag.append(jnp.ones(attr["dim"])*1.25)
 
@@ -110,15 +110,14 @@ class Bbvi:
 
         Args:
             attr (Any): Attributes of a parameter node.
-            input (Any): Input data that is passed from child nodes to parents.
 
         Returns:
             Dict: The initial interal variational parameters.
         """
 
-        mu = attr["internal_value"]
+        mu = attr["value"]
 
-        lower_tri = jnp.diag(jnp.ones(attr["dim"])*1.25)
+        lower_tri = jnp.diag(jnp.ones(attr["dim"]))
         return {"mu": mu, "lower_tri": lower_tri}
 
     def pass_samples(self, samples: Dict) -> Array:
@@ -132,13 +131,39 @@ class Bbvi:
             Array: The log-probabilities of the model for all the samples.
         """
 
-        stacked_samples = {key: jnp.stack(value, axis=0) for key, value in samples.items()}
-
         def compute_logprob(sample):
             self.Graph.update_graph(sample)
             return self.Graph.logprob()
 
-        logprobs = jax.vmap(compute_logprob)(stacked_samples)
+        logprobs = jax.vmap(compute_logprob)(samples)
+
+        return logprobs
+
+    def pass_samples_minibtaching(self, samples: Dict, seed: jax.random.PRNGKey) -> Array:
+        """
+        Method to pass the samples from method lower_bound to the Graph.logprob() method.
+
+        Args:
+            samples (Dict): Samples from the variational distribution for the parameters of the model in a dictionary.
+
+        Returns:
+            Array: The log-probabilities of the model for all the samples.
+        """
+
+        idx = jax.random.permutation(seed, self.num_obs)
+
+        def compute_logprob(sample):
+            arrays = []
+
+            for i in range(self.num_obs // self.batch_size):
+                self.Graph.update_graph(sample, idx[i * self.batch_size : (i + 1) * self.batch_size])
+                arrays.append(self.Graph.logprob())
+
+            mean = jnp.concatenate(arrays)
+
+            return jnp.mean(mean, keepdims=True)
+
+        logprobs = jax.vmap(compute_logprob)(samples)
 
         return logprobs
 
@@ -158,14 +183,23 @@ class Bbvi:
 
         for kw in variational_params.keys():
             mu, lower_tri = variational_params[kw]["mu"], variational_params[kw]["lower_tri"]
+            if self.DiGraph.nodes[kw]["attr"]["param_space"] is None:
 
-            samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=self.num_samples, seed=seed)
+                samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=self.num_samples, seed=seed)
+                entropy = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(samples[kw]), keepdims=True)
+                arrays.append(entropy)
 
-            entropy = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(samples[kw]), keepdims=True)
-            arrays.append(entropy)
+            elif self.DiGraph.nodes[kw]["attr"]["param_space"] == "positive":
+
+                samples[kw] = jnp.exp(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=self.num_samples, seed=seed))
+                l = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(jnp.log(samples[kw]))
+                e = jnp.multiply(l, jnp.squeeze(1/samples[kw]))
+                entropy = jnp.mean(l, keepdims=True)
+                arrays.append(entropy)
 
         means = jnp.concatenate(arrays)
-        elbo = jnp.mean(self.pass_samples(samples)) - jnp.sum(means)
+
+        elbo = jnp.mean(self.pass_samples_minibtaching(samples, seed)) - jnp.sum(means)
 
         return - elbo
 

@@ -35,85 +35,85 @@ class ModelGraph:
         Method to generate the root of the DAG (response).
         """
 
-        attr = {"value": self.Model.response,
-                 "dist": self.Model.response_dist.get_dist(),
-                 "log_lik": self.Model.log_lik}
+        attr = {"dim": self.Model.response.shape[0],
+                "value": self.Model.response,
+                "dist": self.Model.response_dist.get_dist(),
+                "log_lik": self.Model.log_lik}
         self.DiGraph.add_node("response", attr=attr)
         self.DiGraph.nodes["response"]["node_type"] = "root"
         self.DiGraph.nodes["response"]["input"] = {}
 
-    def add_strong_node(self, name: str, input: Param) -> None:
+    def add_strong_node(self, name: str, param: Param) -> None:
         """
         Method to add a strong node to the DAG. Strong nodes have a probability distribution.
 
         Args:
             name (str): Name of the node. Key of kwinputs.
-            input (Param): Class Param.
+            param (Param): Class Param.
         """
 
-        attr = {"dim": input.dim,
-                "internal_value": input.internal_value,
-                 "value": input.value,
-                 "bijector": input.function,
-                 "dist": input.distribution.get_dist(),
-                 "fixed_params": input.distribution.fixed_params,
-                 "log_prior": input.log_prior}
+        attr = {"dim": param.dim,
+                "param_space": param.param_space,
+                "value": param.value,
+                "dist": param.distribution.get_dist(),
+                "fixed_params": param.distribution.fixed_params,
+                "log_prior": param.log_prior}
         self.DiGraph.add_node(name, attr=attr)
         self.DiGraph.nodes[name]["node_type"] = "strong"
         self.DiGraph.nodes[name]["input"] = {}
         self.DiGraph.nodes[name]["input_fixed"] = True
 
-    def add_lpred_node(self, name: str, input: Lpred) -> None:
+    def add_lpred_node(self, name: str, lpred: Lpred) -> None:
         """
         Method to add a linear predictor (lpred) node to the DAG. Lpred nodes are linear predictors
         with a bijector function (inverse link function).
 
         Args:
             name (str): Name of the weak node.
-            input (Lpred): Class Lpred.c
+            lpred (Lpred): Class Lpred.
         """
 
-        attr = {"value": input.value,
-                 "bijector": input.function}
+        attr = {"value": lpred.value,
+                 "bijector": lpred.function}
         self.DiGraph.add_node(name, attr=attr)
         self.DiGraph.nodes[name]["node_type"] = "lpred"
         self.DiGraph.nodes[name]["input"] = {}
 
-    def add_fixed_node(self, name: str, input: Obs) -> None:
+    def add_fixed_node(self, name: str, obs: Obs) -> None:
         """
         Method to add a fixed node to the DAG. Fixed nodes are design matrices.
 
         Args:
             name (str): Name of the fixed node.
-            input (Obs): Class Obs.
+            obs (Obs): Class Obs.
         """
 
-        attr = {"value": input.design_matrix}
+        attr = {"value": obs.design_matrix}
         self.DiGraph.add_node(name, attr=attr)
         self.DiGraph.nodes[name]["node_type"] = "fixed"
 
-    def add_hyper_node(self, name: str, input: Hyper) -> None:
+    def add_hyper_node(self, name: str, hyper: Hyper) -> None:
         """
         Method to add a hyperparameter node.
 
         Args:
             name (str): Name of the hyperparameter node.
-            input (Hyper): Class Hyper.
+            hyper (Hyper): Class Hyper.
         """
 
-        attr = {"value": input.value}
+        attr = {"value": hyper.value}
         self.DiGraph.add_node(name, attr=attr)
         self.DiGraph.nodes[name]["node_type"] = "hyper"
 
     def init_dist(self, dist: Distribution,
-                  input: dict,
+                  params: dict,
                   fixed_params: dict | None = None) -> Distribution:
         """
         Method to initialize the probability distribution of a strong node (one with a probability distribution).
 
         Args:
             dist (Distribution): A tensorflow probability distribution.
-            input (dict): Key, value pair, where keys should match the names of the parameters of
+            params (dict): Key, value pair, where keys should match the names of the parameters of
             the distribution.
 
         Returns:
@@ -121,9 +121,9 @@ class ModelGraph:
         """
 
         if fixed_params is None:
-            return dist(**input)
+            return dist(**params)
         else:
-            return dist(**input, **fixed_params)
+            return dist(**params, **fixed_params)
 
 
     def init_traversal(self) -> None:
@@ -172,40 +172,18 @@ class ModelGraph:
             design_matrix = self.DiGraph.nodes[node]["input"]["fixed"]
         design_matrix = jnp.expand_dims(design_matrix, 0)
 
-        input = self.DiGraph.nodes[node]["input"]
+        input_pass = self.DiGraph.nodes[node]["input"]
 
-        values_params = jnp.concatenate([input for key, input in input.items() if key != "fixed"], axis=-1)
+        values_params = jnp.concatenate([item for key, item in input_pass.items() if key != "fixed"], axis=-1)
         values_params = jnp.expand_dims(values_params, -1)
 
         nu = jnp.matmul(design_matrix, values_params)
         nu = jnp.squeeze(nu, axis=-1)
 
-
         if bijector is not None:
             transformed = bijector(nu)
         else:
             transformed = nu
-
-        return transformed
-
-    def update_param_value(self, attr: dict, samples: Array) -> Array:
-        """
-        Method to calculate the value attribute of a parameter node using samples from a variational distribution for a parameter in the DAG.
-
-        Args:
-            attr (dict): Attributes of a node
-            sample (Array): Sample (internal representation) from the variational distribution of the parameter.
-
-        Returns:
-            Array: Sample of the parameter after applying the bijector.
-        """
-
-        bijector = attr["bijector"]
-
-        if bijector is not None:
-            transformed = bijector(samples)
-        else:
-            transformed = samples
 
         return transformed
 
@@ -280,28 +258,26 @@ class ModelGraph:
                 successor = successors[0]
 
             if node_type == "hyper":
-                input = attr["value"]
+                input_pass = attr["value"]
 
                 edge = self.DiGraph.get_edge_data(node, successor)
-                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input_pass
 
             elif node_type == "fixed":
-                input = attr["value"]
+                input_pass = attr["value"]
 
                 edge = self.DiGraph.get_edge_data(node, successor)
-                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input_pass
 
             elif node_type == "lpred":
                 attr["value"] = self.update_lpred(node, attr)
-                input = attr["value"]
+                input_pass = attr["value"]
 
                 edge = self.DiGraph.get_edge_data(node, successor)
-                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input_pass
 
             elif node_type == "strong":
-
-                attr["internal_value"] = sample[node]
-                attr["value"] = self.update_param_value(attr, sample[node])
+                attr["value"] = sample[node]
 
                 for predecessor in self.DiGraph.predecessors(node):
                     if self.DiGraph.nodes[predecessor]["node_type"] != "hyper":
@@ -310,17 +286,17 @@ class ModelGraph:
 
                 if self.DiGraph.nodes[node]["input_fixed"]:
                     attr["dist"] = self.init_dist(dist=attr["dist"],
-                                                  input=self.DiGraph.nodes[node]["input"],
+                                                  params=self.DiGraph.nodes[node]["input"],
                                                   fixed_params=attr["fixed_params"])
                 else:
                     init_dist = self.init_dist(dist=attr["dist"],
-                                               input=self.DiGraph.nodes[node]["input"],
+                                               params=self.DiGraph.nodes[node]["input"],
                                                fixed_params=attr["fixed_params"])
                     attr["log_prior"] = self.logprior(init_dist, attr["value"])
 
-                input = attr["value"]
+                input_pass = attr["value"]
                 edge = self.DiGraph.get_edge_data(node, successor)
-                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = input_pass
 
             elif node_type == "root":
                 init_dist = self.init_dist(attr["dist"], self.DiGraph.nodes[node]["input"])
@@ -331,25 +307,25 @@ class ModelGraph:
 
         if isinstance(obj, Lpred):
             # Lpred case
-            self.add_lpred_node(name=node_name, input=obj)
+            self.add_lpred_node(name=node_name, lpred=obj)
             self.DiGraph.add_edge(node_name, parent_node, role=node_name,
                                   bijector=obj.function)
             name_fixed = obj.Obs.name
-            self.add_fixed_node(name=name_fixed, input=obj)
+            self.add_fixed_node(name=name_fixed, obs=obj)
             self.DiGraph.add_edge(name_fixed, node_name, role="fixed")
 
         elif isinstance(obj, Param):
             # Param case
             name_param = obj.name
-            self.add_strong_node(name=name_param, input=obj)
+            self.add_strong_node(name=name_param, param=obj)
             self.DiGraph.add_edge(name_param, parent_node, role=node_name)
             node_name = name_param
-            params[name_param] = obj.internal_value
+            params[name_param] = obj.value
 
         elif isinstance(obj, Hyper):
             # Hyper case
             name_hyper = obj.name
-            self.add_hyper_node(name=name_hyper, input=obj)
+            self.add_hyper_node(name=name_hyper, hyper=obj)
             self.DiGraph.add_edge(name_hyper, parent_node, role=node_name)
 
         if isinstance(obj, (list, tuple)):
@@ -419,32 +395,28 @@ class ModelGraph:
 
             if node_type == "lpred":
                 attr["value"] = self.update_lpred(node, attr, idx)
-                input = attr["value"]
 
                 edge = self.DiGraph.get_edge_data(node, successor)
-                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = attr["value"]
 
             elif node_type == "strong":
-                attr["internal_value"] = samples[node]
-                attr["value"] = self.update_param_value(attr, samples[node])
+                attr["value"] = samples[node]
                 if self.DiGraph.nodes[node]["input_fixed"]:
                     attr["log_prior"] = self.logprior(attr["dist"], attr["value"])
                 else:
                     init_dist = self.init_dist(dist=attr["dist"],
-                                               input=self.DiGraph.nodes[node]["input"],
+                                               params=self.DiGraph.nodes[node]["input"],
                                                fixed_params=attr["fixed_params"])
                     attr["log_prior"] = self.logprior(init_dist, attr["value"])
-
-                input = attr["value"]
 
                 # Test the dims
                 # print(node + ":", attr["log_prior"].shape)
                 edge = self.DiGraph.get_edge_data(node, successor)
-                self.DiGraph.nodes[successor]["input"][edge["role"]] = input
+                self.DiGraph.nodes[successor]["input"][edge["role"]] = attr["value"]
 
             elif node_type == "root":
                 init_dist = self.init_dist(dist=attr["dist"],
-                                           input=self.DiGraph.nodes[node]["input"])
+                                           params=self.DiGraph.nodes[node]["input"])
                 attr["log_lik"] = self.loglik(init_dist, attr["value"], idx)
 
                 # Test the dims
