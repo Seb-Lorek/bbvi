@@ -1,5 +1,5 @@
 """
-Multivariate Normal Distribution based on Chol.
+Multivariate normal distribution based on chol.
 """
 
 import jax
@@ -15,18 +15,19 @@ def mvn_precision_chol_log_prob(x: Array, loc: Array, precision_matrix_chol: Arr
     Returns the log-density of a multivariate normal distribution parametrized by
     the Cholesky decomposition of the precision matrix.
     """
+
     z = (x - loc) @ precision_matrix_chol
-    log_prob = jnp.sum(tfjd.Normal(loc=0., scale=1.).log_prob(z))
+    log_prob = jnp.sum(tfjd.Normal(loc=0., scale=1.).log_prob(z), axis=-1)
     log_det = jnp.sum(jnp.log(jnp.diag(precision_matrix_chol)))
 
     return log_prob + log_det
-
 
 def mvn_precision_chol_sample(loc: Array, precision_matrix_chol: Array, key: Array, S: int=1) -> Array:
     """
     Samples from a Multivariate Normal distribution parametrized by
     the Cholesky decomposition of the precision matrix.
     """
+
     sample_shape = (S, precision_matrix_chol.shape[-1]) if S > 1 else (precision_matrix_chol.shape[-1], )
 
     z = jax.random.normal(key, sample_shape)

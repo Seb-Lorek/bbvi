@@ -68,7 +68,7 @@ class Model:
 
     def return_param_logpriors(self, obj: Any) -> list:
         """
-        Method to obtain all log-probabilites of the classes Param. The function has a
+        Method to obtain all log-probabilites of the classes Param. The method has a
         recursive structure.
 
         Args:
@@ -145,7 +145,7 @@ class Dist:
     def __init__(self, distribution: Distribution, **kwinputs: Any):
         self.distribution = distribution
         self.kwinputs = kwinputs
-        self.fixed_params = {kw: item for kw, item in self.kwinputs.items()
+        self.additional_params = {kw: item for kw, item in self.kwinputs.items()
                              if not isinstance(item, (Hyper, Param, Lpred))} or None
 
     def init_dist(self) -> Distribution:
@@ -208,7 +208,7 @@ class Lpred:
         self.Obs = Obs
         self.function = function
         self.kwinputs = kwinputs
-        self.design_matrix = self.Obs.design_matrix
+        self.design_matrix = jnp.asarray(self.Obs.design_matrix, dtype=jnp.float32)
         self.params_values = self.update_params()
         self.value = self.update_lpred()
 

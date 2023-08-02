@@ -27,8 +27,14 @@ from ..model.model import (
     Any
     )
 
-from ..model.nodes import(
+from ..model.nodes import (
     ModelGraph
+)
+
+from ..distributions.mvn import (
+    mvn_precision_chol_log_prob,
+    mvn_precision_chol_sample,
+    solve_chol
 )
 
 class BbviState(NamedTuple):
@@ -40,15 +46,15 @@ class Bbvi:
     Inference algorithm.
     """
 
-    def __init__(self, Graph: ModelGraph, key: int, batch_size: int = 256, num_samples: int = 64, num_iterations: int = 5000) -> None:
+    def __init__(self, Graph: ModelGraph, key: int, batch_size: int = 256, num_samples: int = 64) -> None:
         self.Graph = Graph
         self.DiGraph = Graph.DiGraph
         self.Model = Graph.Model
         self.num_samples = num_samples
         self.batch_size = batch_size
-        self.num_iterations = num_iterations
         self.num_obs = self.Model.response.shape[0]
         self.key = key
+        self.init_variational_params = {}
         self.variational_params = {}
         self.opt_variational_params = {}
         self.elbo_history = {}
@@ -86,7 +92,7 @@ class Bbvi:
             attr = self.DiGraph.nodes[node]["attr"]
             input_pass = self.DiGraph.nodes[node]["input"]
             mu.append(attr["internal_value"])
-            diag.append(jnp.ones(attr["dim"])*1.25)
+            diag.append(jnp.ones(attr["dim"]))
 
         mu = jnp.concatenate(mu)
         lower_tri = jnp.diag(jnp.concatenate(diag))
@@ -102,11 +108,11 @@ class Bbvi:
             node_type = self.DiGraph.nodes[node].get("node_type")
             if node_type == "strong":
                 attr = self.DiGraph.nodes[node]["attr"]
-                self.variational_params[node] = self.init_variational_params(attr)
+                self.init_variational_params[node] = self.starting_variational_params(attr)
 
-    def init_variational_params(self, attr: Any) -> Dict:
+    def starting_variational_params(self, attr: Any) -> Dict:
         """
-        Method to initialize the internal variational parameters.
+        Method to initialize the variational parameters.
 
         Args:
             attr (Any): Attributes of a parameter node.
@@ -115,11 +121,18 @@ class Bbvi:
             Dict: The initial interal variational parameters.
         """
 
-        mu = attr["value"]
+        # Setting start values to attr["value"] makes this method
+        # not recallable
+        if attr["param_space"] is None:
+            loc = attr["value"]
+            lower_tri = jnp.diag(jnp.ones(attr["dim"]) * 1.25)
+        elif attr["param_space"] == "positive":
+            loc = jnp.log(attr["value"])
+            lower_tri = jnp.diag(jnp.ones(attr["dim"]) * 1.25)
 
-        lower_tri = jnp.diag(jnp.ones(attr["dim"]))
-        return {"mu": mu, "lower_tri": lower_tri}
+        return {"loc": loc, "lower_tri": lower_tri}
 
+    # Old pass samples method
     def pass_samples(self, samples: Dict) -> Array:
         """
         Method to pass the samples from method lower_bound to the Graph.logprob() method.
@@ -139,6 +152,7 @@ class Bbvi:
 
         return logprobs
 
+    # New pass samples method that allows for Mini-Batching
     def pass_samples_minibtaching(self, samples: Dict, seed: jax.random.PRNGKey) -> Array:
         """
         Method to pass the samples from method lower_bound to the Graph.logprob() method.
@@ -167,6 +181,7 @@ class Bbvi:
 
         return logprobs
 
+    # Should also take the sample_size, batch_size
     def lower_bound(self, variational_params: Dict, seed: jax.random.PRNGKey) -> Array:
         """
         Method to calculate the negative ELBO (evidence lower bound).
@@ -182,28 +197,35 @@ class Bbvi:
         samples = {}
 
         for kw in variational_params.keys():
-            mu, lower_tri = variational_params[kw]["mu"], variational_params[kw]["lower_tri"]
+            loc, lower_tri = variational_params[kw]["loc"], variational_params[kw]["lower_tri"]
             if self.DiGraph.nodes[kw]["attr"]["param_space"] is None:
+                # Learn the the chol of the precision matrix
+                # Make sure lower_tri is really a lower triangular matrix
+                lower_tri = jnp.tril(lower_tri)
+                samples[kw] = mvn_precision_chol_sample(loc=loc, precision_matrix_chol=lower_tri, key=seed, S=self.num_samples)
+                l = mvn_precision_chol_log_prob(x=samples[kw], loc=loc, precision_matrix_chol=lower_tri)
+                entropy = jnp.mean(l, keepdims=True)
 
-                samples[kw] = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=self.num_samples, seed=seed)
-                entropy = jnp.mean(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(samples[kw]), keepdims=True)
                 arrays.append(entropy)
 
             elif self.DiGraph.nodes[kw]["attr"]["param_space"] == "positive":
+                # Learn the the chol of the precision matrix
+                # Make sure lower_tri is really a lower triangular matrix
+                lower_tri = jnp.tril(lower_tri)
+                s = mvn_precision_chol_sample(loc=loc, precision_matrix_chol=lower_tri, key=seed, S=self.num_samples)
+                l = mvn_precision_chol_log_prob(x=s, loc=loc, precision_matrix_chol=lower_tri)
+                l_adjust = l - jnp.sum(s, axis=-1)
+                samples[kw] = jnp.exp(s)
 
-                samples[kw] = jnp.exp(tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).sample(sample_shape=self.num_samples, seed=seed))
-                l = tfjd.MultivariateNormalTriL(loc=mu, scale_tril=lower_tri).log_prob(jnp.log(samples[kw]))
-                e = jnp.multiply(l, jnp.squeeze(1/samples[kw]))
-                entropy = jnp.mean(l, keepdims=True)
+                entropy = jnp.mean(l_adjust, keepdims=True)
                 arrays.append(entropy)
 
         means = jnp.concatenate(arrays)
-
         elbo = jnp.mean(self.pass_samples_minibtaching(samples, seed)) - jnp.sum(means)
 
         return - elbo
 
-    def run_bbvi(self, step_size: float = 0.001, threshold: float = 1e-5, chunk_size: int = 1) -> Tuple:
+    def run_bbvi(self, step_size: float = 0.001, threshold: float = 1e-5, chunk_size: int = 1, num_iterations: int = 5000) -> Tuple:
         """
         Method to start the stochastic optimization. The implementation uses adam.
 
@@ -211,14 +233,14 @@ class Bbvi:
             step_size (float, optional): Step size of the SGD optimizer (Adam). Defaults to 0.001.
             threshold (float, optional): Threshold to stop the optimization. Defaults to 1e-5.
             chunk_size (int, optional): Chunk sizes of to evaluate. Defaults to 1.
-            batch_size (int, optional): Size of batches to compute the ELBO. Defaults to 256.
+            num_iterations (int, optional): Number of iteration steps in the optimization (Epochs). Defaults to 5000.
 
         Returns:
             Tuple: Last ELBO and the optimized variational parameters in a dictionary.
         """
 
         opt_init, opt_update, get_params = optimizers.adam(step_size=step_size)
-        opt_state = opt_init(self.variational_params)
+        opt_state = opt_init(self.init_variational_params)
 
         def bbvi_body(state, step):
             value, grads = jax.value_and_grad(self.lower_bound)(get_params(state.opt_state), state.seed)
@@ -238,7 +260,7 @@ class Bbvi:
         state = BbviState(seed, opt_state)
         elbo_chunks = []
 
-        for _ in range(self.num_iterations // chunk_size):
+        for _ in range(num_iterations // chunk_size):
             state, elbo_chunk = bbvi_scan(chunk_size, state)
             elbo_chunks.append(elbo_chunk)
             elbo_delta = abs(elbo_chunk[-1] - elbo_chunk[-2]) if len(elbo_chunk) > 1 else jnp.inf
@@ -259,11 +281,12 @@ class Bbvi:
 
         for node in self.Graph.prob_traversal_order:
             node_type = self.DiGraph.nodes[node].get("node_type")
+            attr = self.DiGraph.nodes[node].get("attr")
             if node_type == "strong":
                 self.opt_variational_params[node] = {
-                        "mu": self.variational_params[node]["mu"],
-                        "cov": jnp.dot(self.variational_params[node]["lower_tri"], self.variational_params[node]["lower_tri"].T)
-                    }
+                    "loc": self.variational_params[node]["loc"],
+                    "cov": jnp.linalg.inv(jnp.dot(self.variational_params[node]["lower_tri"], self.variational_params[node]["lower_tri"].T))
+                }
 
     def plot_elbo(self):
         """

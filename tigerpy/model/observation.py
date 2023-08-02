@@ -18,10 +18,10 @@ class Obs:
         self.name = name
         self.intercept = intercept
         self.design_matrix = None
-        self.fixed_incl = None
+        self.fixed_incl = False
         self.fixed_data = None
         self.fixed_dim = None
-        self.smooth_incl = None
+        self.smooth_incl = False
         self.smooth_data = []
         self.smooth_dim = []
         self.smooth_knots = []
@@ -51,25 +51,26 @@ class Obs:
             self.fixed_data = np.column_stack((np.ones(len(self.fixed_data)), self.fixed_data))
 
         if self.design_matrix is None:
-            self.design_matrix = self.fixed_data
+            self.design_matrix = jnp.asarray(self.fixed_data, dtype=jnp.float32)
             self.fixed_dim = self.fixed_data.shape[1]
             self.fixed_incl = True
         else:
             print("Design-Matrix contains already smooth terms")
             raise ValueError("Fixed covariate effects must be defined first.")
 
-    def smooth(self, data: Array, n_knots=30, degree=3, rwk=2) -> None:
+    def smooth(self, data: Array, n_knots=20, degree=3, rwk=2) -> None:
         """
-        Method to define smooth B-spline covariates.
+        Method to define smooth B-Spline covariates.
 
         Args:
             data (Array): 1D-Array that contains a covariate.
-            n_knots (int, optional): Number of Knots . Defaults to 30.
-            degree (int, optional): The degree of the B-spline. Defaults to 3.
-            rwk (int, optional): Random walk order that defines the penalisation of the coefficients. Defaults to 2.
+            n_knots (int, optional): Number of Knots . Defaults to 20.
+            degree (int, optional): The degree of the B-spline. Defaults to 3 (cubic).
+            rwk (int, optional): Random walk order that defines the penalisation of the coefficients. Defaults to 2 (second order).
         """
 
-        knots = np.linspace(data.min(), data.max(), num=n_knots)
+        # use n_knots+k+1 knots to have dim (n, n_knots) in the spline design_matrix
+        knots = np.linspace(data.min(), data.max(), num=n_knots+degree+1)
 
         smooth_matrix = bs.design_matrix(data, t=knots, k=degree, extrapolate=True).toarray()
         self.smooth_data.append(smooth_matrix)
@@ -84,7 +85,7 @@ class Obs:
 
         if self.design_matrix is None:
             if self.intercept is False:
-                self.design_matrix = smooth_matrix
+                self.design_matrix = jnp.asarray(smooth_matrix, dtype=jnp.float32)
                 self.smooth_incl = True
             else:
                 self.fixed_data = np.ones((smooth_matrix.shape[0],1))
