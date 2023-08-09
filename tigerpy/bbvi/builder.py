@@ -38,7 +38,7 @@ from ..distributions.mvn import (
 )
 
 class BbviState(NamedTuple):
-    seed: jax.random.PRNGKey
+    key: jax.random.PRNGKey
     opt_state: Any
 
 class Bbvi:
@@ -46,7 +46,7 @@ class Bbvi:
     Inference algorithm.
     """
 
-    def __init__(self, Graph: ModelGraph, key: int, batch_size: int = 256, num_samples: int = 64) -> None:
+    def __init__(self, Graph: ModelGraph, key: jax.random.PRNGKey, batch_size: int = 256, num_samples: int = 64) -> None:
         self.Graph = Graph
         self.DiGraph = Graph.DiGraph
         self.Model = Graph.Model
@@ -121,19 +121,17 @@ class Bbvi:
             Dict: The initial interal variational parameters.
         """
 
-        # Setting start values to attr["value"] makes this method
-        # not recallable
+        # Setting start values to attr["value"] or jnp.log(attr["value"])
         if attr["param_space"] is None:
             loc = attr["value"]
-            lower_tri = jnp.diag(jnp.ones(attr["dim"]) * 1.25)
+            lower_tri = jnp.diag(jnp.ones(attr["dim"]))
         elif attr["param_space"] == "positive":
             loc = jnp.log(attr["value"])
-            lower_tri = jnp.diag(jnp.ones(attr["dim"]) * 1.25)
+            lower_tri = jnp.diag(jnp.ones(attr["dim"]))
 
         return {"loc": loc, "lower_tri": lower_tri}
 
-    # Old pass samples method
-    def pass_samples(self, samples: Dict) -> Array:
+    def pass_samples_minibatching(self, samples: Dict, key: jax.random.PRNGKey) -> Array:
         """
         Method to pass the samples from method lower_bound to the Graph.logprob() method.
 
@@ -144,45 +142,27 @@ class Bbvi:
             Array: The log-probabilities of the model for all the samples.
         """
 
-        def compute_logprob(sample):
-            self.Graph.update_graph(sample)
-            return self.Graph.logprob()
-
-        logprobs = jax.vmap(compute_logprob)(samples)
-
-        return logprobs
-
-    # New pass samples method that allows for Mini-Batching
-    def pass_samples_minibtaching(self, samples: Dict, seed: jax.random.PRNGKey) -> Array:
-        """
-        Method to pass the samples from method lower_bound to the Graph.logprob() method.
-
-        Args:
-            samples (Dict): Samples from the variational distribution for the parameters of the model in a dictionary.
-
-        Returns:
-            Array: The log-probabilities of the model for all the samples.
-        """
-
-        idx = jax.random.permutation(seed, self.num_obs)
+        key, subkey = jax.random.split(key)
+        idx = jax.random.permutation(subkey, self.num_obs)
 
         def compute_logprob(sample):
             arrays = []
 
             for i in range(self.num_obs // self.batch_size):
                 self.Graph.update_graph(sample, idx[i * self.batch_size : (i + 1) * self.batch_size])
-                arrays.append(self.Graph.logprob())
+                logprob = self.Graph.logprob()
+                arrays.append(logprob)
 
-            mean = jnp.concatenate(arrays)
+            means = jnp.concatenate(arrays)
 
-            return jnp.mean(mean, keepdims=True)
+            return jnp.mean(means, keepdims=True)
 
         logprobs = jax.vmap(compute_logprob)(samples)
 
         return logprobs
 
     # Should also take the sample_size, batch_size
-    def lower_bound(self, variational_params: Dict, seed: jax.random.PRNGKey) -> Array:
+    def lower_bound(self, variational_params: Dict, key: jax.random.PRNGKey) -> Array:
         """
         Method to calculate the negative ELBO (evidence lower bound).
 
@@ -193,6 +173,8 @@ class Bbvi:
             Array: Negative ELBO.
         """
 
+        key, subkey = jax.random.split(key)
+
         arrays = []
         samples = {}
 
@@ -202,7 +184,7 @@ class Bbvi:
                 # Learn the the chol of the precision matrix
                 # Make sure lower_tri is really a lower triangular matrix
                 lower_tri = jnp.tril(lower_tri)
-                samples[kw] = mvn_precision_chol_sample(loc=loc, precision_matrix_chol=lower_tri, key=seed, S=self.num_samples)
+                samples[kw] = mvn_precision_chol_sample(loc=loc, precision_matrix_chol=lower_tri, key=subkey, S=self.num_samples)
                 l = mvn_precision_chol_log_prob(x=samples[kw], loc=loc, precision_matrix_chol=lower_tri)
                 entropy = jnp.mean(l, keepdims=True)
 
@@ -212,16 +194,17 @@ class Bbvi:
                 # Learn the the chol of the precision matrix
                 # Make sure lower_tri is really a lower triangular matrix
                 lower_tri = jnp.tril(lower_tri)
-                s = mvn_precision_chol_sample(loc=loc, precision_matrix_chol=lower_tri, key=seed, S=self.num_samples)
+                s = mvn_precision_chol_sample(loc=loc, precision_matrix_chol=lower_tri, key=subkey, S=self.num_samples)
                 l = mvn_precision_chol_log_prob(x=s, loc=loc, precision_matrix_chol=lower_tri)
                 l_adjust = l - jnp.sum(s, axis=-1)
+
                 samples[kw] = jnp.exp(s)
 
                 entropy = jnp.mean(l_adjust, keepdims=True)
                 arrays.append(entropy)
 
         means = jnp.concatenate(arrays)
-        elbo = jnp.mean(self.pass_samples_minibtaching(samples, seed)) - jnp.sum(means)
+        elbo = jnp.mean(self.pass_samples_minibatching(samples, key)) - jnp.sum(means)
 
         return - elbo
 
@@ -243,10 +226,10 @@ class Bbvi:
         opt_state = opt_init(self.init_variational_params)
 
         def bbvi_body(state, step):
-            value, grads = jax.value_and_grad(self.lower_bound)(get_params(state.opt_state), state.seed)
+            value, grads = jax.value_and_grad(self.lower_bound)(get_params(state.opt_state), state.key)
             opt_state = opt_update(step, grads, state.opt_state)
 
-            return BbviState(state.seed, opt_state), -value
+            return BbviState(state.key, opt_state), -value
 
         @partial(jax.jit, static_argnums=0)
         def bbvi_scan(chunk_size: int, bbvi_state: BbviState) -> Tuple[BbviState, jnp.array]:
@@ -256,8 +239,8 @@ class Bbvi:
 
             return new_state, elbo_chunk
 
-        seed = jax.random.PRNGKey(self.key)
-        state = BbviState(seed, opt_state)
+        key = self.key
+        state = BbviState(key, opt_state)
         elbo_chunks = []
 
         for _ in range(num_iterations // chunk_size):

@@ -29,8 +29,8 @@ def _log_pdet(eigenvalues: Array, rank: Array | float | None = None,
              tol: float = 1e-6) -> Array | float:
     """
     Computes the log of the pseudo-determinant of a matrix based on the provided
-    eigenvalues. If the rank is provided, it is used to select the non-zero eigenvalues.
-    If the rank is not provided, it is computed by counting the non-zero eigenvalues. An
+    eigenvalues. If the rank is provided, it is used to select the non-zero/positive eigenvalues.
+    If the rank is not provided, it is computed by counting the non-zero. An
     eigenvalue is deemed to be non-zero if it is greater than the numerical tolerance
     ``tol``.
 
@@ -48,6 +48,7 @@ def _log_pdet(eigenvalues: Array, rank: Array | float | None = None,
         mask = jax.lax.fori_loop(0, eigenvalues.shape[-1], fn, eigenvalues)
 
     selected = jnp.where(mask, eigenvalues, 1.0)
+
     log_pdet = jnp.sum(jnp.log(selected), axis=-1)
     return log_pdet
 
@@ -66,8 +67,13 @@ class MultivariateNormalDegenerate(tfjd.Distribution):
 
         self._tol = tol
         self._pen = pen
-        self._scale = scale
-        prec = pen / jnp.expand_dims(scale ** 2, axis=(-2, -1))
+        # since batches are passed from a multivariate normal shape is (batch,event(=1 in the univariate case))
+        if scale.ndim == 1:
+            self._scale = scale
+        elif scale.ndim == 2 and scale.shape[-1] == 1:
+            self._scale = jnp.squeeze(scale, axis=-1)
+
+        prec = pen / jnp.expand_dims(self._scale ** 2, axis=(-2, -1))
         loc = jnp.atleast_1d(loc)
 
         if not prec.shape[-2] == prec.shape[-1]:
@@ -143,6 +149,7 @@ class MultivariateNormalDegenerate(tfjd.Distribution):
 
         prob1 = - jnp.squeeze(x_centerd @ self._prec @ x_centerd_T, axis=(-2, -1))
         prob2 = self._rank * jnp.log(2 * jnp.pi) - self._log_pdet
+
         return 0.5 * (prob1 - prob2)
 
     def _event_shape(self):

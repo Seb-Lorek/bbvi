@@ -177,15 +177,17 @@ class ModelGraph:
         else:
             design_matrix = self.DiGraph.nodes[node]["input"]["fixed"]
         design_matrix = jnp.expand_dims(design_matrix, 0)
-
+        # print("design_matrix:", design_matrix.shape)
         input_pass = self.DiGraph.nodes[node]["input"]
 
         values_params = jnp.concatenate([item for key, item in input_pass.items() if key != "fixed"], axis=-1)
+
         values_params = jnp.expand_dims(values_params, -1)
-
+        # print("params_lpred:", values_params.shape)
         nu = jnp.matmul(design_matrix, values_params)
+        # print("nu1:", nu.shape)
         nu = jnp.squeeze(nu, axis=-1)
-
+        # print("nu2:", nu.shape)
         if bijector is not None:
             transformed = bijector(nu)
         else:
@@ -234,19 +236,27 @@ class ModelGraph:
         and all log-priors of probabilistic nodes.
 
         Returns:
-            Array: The logprobability of the model array of (1,).
+            Array: The logprobability of the model array of (1,)/(num_samples,).
         """
 
+        # log_prob_sum = jnp.zeros((64,), dtype=jnp.float32)
         log_prob_sum = jnp.array([0.0], dtype=jnp.float32)
 
         for node in self.prob_traversal_order:
             node_type = self.DiGraph.nodes[node].get("node_type")
+
             if node_type == "strong":
                 log_prior = self.DiGraph.nodes[node].get("attr", {}).get("log_prior", 0.0)
-                log_prob_sum += jnp.sum(log_prior)
+                # think maybe to reduce this code here
+                if log_prior.ndim == 2 and log_prior.shape[1] == 1:
+                    log_prior = jnp.squeeze(log_prior)
+                elif log_prior.ndim == 2 and log_prior.shape[1] != 1:
+                    log_prior = jnp.sum(log_prior, axis=-1)
+                log_prob_sum += log_prior
+
             elif node_type == "root":
                 log_lik = self.DiGraph.nodes[node].get("attr", {}).get("log_lik", 0.0)
-                log_prob_sum += jnp.sum(log_lik)
+                log_prob_sum += jnp.sum(log_lik, axis=-1)
 
         return log_prob_sum
 
@@ -438,6 +448,8 @@ class ModelGraph:
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = attr["value"]
 
+                # Test the dims
+                # print(node + ":", attr["value"].shape)
             elif node_type == "strong":
                 attr["value"] = sample[node]
                 if self.DiGraph.nodes[node]["input_fixed"]:
@@ -449,7 +461,8 @@ class ModelGraph:
                     attr["log_prior"] = self.logprior(init_dist, attr["value"])
 
                 # Test the dims
-                # print(node + ":", attr["log_prior"].shape)
+                # print(node + "_log_prior" + ":", attr["log_prior"].shape)
+
                 edge = self.DiGraph.get_edge_data(node, successor)
                 self.DiGraph.nodes[successor]["input"][edge["role"]] = attr["value"]
 
@@ -459,7 +472,7 @@ class ModelGraph:
                 attr["log_lik"] = self.loglik(init_dist, attr["value"], idx)
 
                 # Test the dims
-                # print("response" + ":", attr["log_lik"].shape)
+                # print("response" + "_log_lik" + ":", attr["log_lik"].shape)
 
     def visualize_graph(self) -> None:
         """
