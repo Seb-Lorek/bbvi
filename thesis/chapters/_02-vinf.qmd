@@ -1,0 +1,3 @@
+# Variational inference {#sec-vinf}
+
+Here comes some information on variational inference.

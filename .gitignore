@@ -10,11 +10,11 @@ data
 # ignore the Byte-compiled files
 __pycache__/
 
-# ignore quarto directory
-quarto
+# ignore notes directory
+notes
 
 # ignore test.py
 playground/test.py
 
-# ignore direcoty legacy
+# ignore directory legacy
 legacy

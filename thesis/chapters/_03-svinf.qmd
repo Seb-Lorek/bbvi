@@ -1,0 +1,3 @@
+# Stochastic variational inference {#sec-svinf}
+
+Part on stochastic variational inference.

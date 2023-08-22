@@ -1,0 +1,3 @@
+# GAMLSS models {#sec-gamlss}
+
+Theory on GAMLSS models.

@@ -1,0 +1,15 @@
+# Affidavit {.unlisted .unnumbered}
+
+I hereby declare that I have produced this work independently and without outside assistance, and have used only the sources and tools stated.
+I have clearly identified the sources of any sections from other works that I have quoted or given in essence.
+I have complied with the guidelines on good academic practice at the University of Göttingen.
+If a digital version has been submitted, it is identical to the written one.
+I am aware that failure to comply with these principles will result in the examination being graded “nicht bestanden”, i.e. failed.
+
+Göttingen, November 30th, 2023,
+
+\vspace{25mm}
+\begin{tabular}{@{}p{3in}@{}}
+\hrulefill \\
+Sebastian Lorek
+\end{tabular}

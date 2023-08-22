@@ -1,0 +1,7 @@
+---
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+---
+
+# Introduction {#sec-intro}
+
+This is the introduction of the thesis. Test refrence @Blei2017. Test a second reference @Ranganath2014.
