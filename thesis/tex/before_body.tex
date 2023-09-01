@@ -65,11 +65,15 @@ November, 2023 \\
 % --- Abstract --- %
 
 \section*{Abstract}
-The thesis analyses the properties of stochastic variational inference for Bayesian GAMLSS models.
-It shows that using a black-box variational inference inference algorithm results in
-consistent parameter estimates for the mean field family. The algorithm is implemented in \verb|python|
-using \verb|JAX| for automatic differentiation. Moreover are the models constructed using graph theory via
-the \verb|networkx| package.
+
+The thesis first provides an introduction into Variational Inference as an alternative
+inference tool in Bayesian inference problemes, which allows for approximation of the posterior distribution.
+Moreover are the properties of stochastic variational inference for Bayesian GAMLSS models analyized.
+Showing that using a black-box variational inference inference algorithm results in
+consistent parameter estimates, using the mean field family, for a variety of common models.
+Furthermore is variational inference compared to common MCMC sampling algorithms. The algorithm is implemented in \verb|python|
+using \verb|JAX| as a numerical computing library and for automatic differentiation.
+Moreover are the models constructed using graph theory via the \verb|networkx| package.
 
 \clearpage
 
@@ -87,7 +91,10 @@ the \verb|networkx| package.
 \section*{List of Abbreviations}
 
 \begin{tabular}{@{} l @{\hskip 1in} l}
-  AIC & Akaike information criterion \\
+  VI & Variational inference \\
+  SVI & Stochastic variational inference \\
   MCMC & Markov chain Monte Carlo \\
-  ML & Maximum likelihood \\
+  KL & Kullback-Leibler \\
+  GAMLSS & Generalized additive models for location, scale and shape \\
+  CAVI & Coordinate ascent variational inference \\
 \end{tabular}

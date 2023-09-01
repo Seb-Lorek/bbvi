@@ -1,3 +1,19 @@
+---
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+---
+
 # Stochastic variational inference {#sec-svinf}
 
 Part on stochastic variational inference.
+
+## Black-box variational inference {#sec-bbvi}
+
+## ELBO convergence {#sec-elbo-conv}
+
+The ELBO moreover constitutes a non-convex objective, resulting in optimization convergence towards a local optimum contingent upon its initialization. In stochast variational inference
+
+...
+
+TBD: Include figure of ELBO convergence for different random seeds and initializations.
+
+...

@@ -1,3 +1,7 @@
+---
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+---
+
 # Application of the algorithm {#sec-app}
 
 Here comes some information on variational inference.

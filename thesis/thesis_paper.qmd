@@ -30,6 +30,8 @@ execute:
   echo: false
   warning: false
   output: true
+crossref:
+  eq-prefix: ""
 ---
 
 \newpage
@@ -53,7 +55,8 @@ execute:
 
 # References {.unnumbered}
 
-<div id="refs"></div>
+::: {#refs}
+:::
 
 \newpage
 \appendix
