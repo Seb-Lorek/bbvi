@@ -4,9 +4,127 @@ bibliography: ["bib/references.bib", "bib/packages.bib"]
 
 # Stochastic variational inference {#sec-svinf}
 
-Part on stochastic variational inference.
+<!-- Short introduction on SVI -->
+
+In @sec-vinf, we delved into VI and its primary objective, the ELBO, as defined in (@eq-elbo). Furthermore, we introduced CAVI as an inference algorithm to solve the maximization objective in (@eq-elbo-opt). If each complete conditional of the parameter blocks is in the exponential family we are able to find optimal factors provided in \eqref{eq-factor-cavi}, ensuring that we maximize the ELBO with each iteration when updating the variational parameters to their expected values from the complete conditional distributions. Thus we found closed form solutions to the optimal variational parameters.
+
+In their seminal paper, @Hoffman2012 introduce SVI into CAVI to enhance the scalability of the inference algorithm, enabling it to effectively process large datasets^[But, it remains essential for each complete conditional to belong to the exponential family.]. Their approach involves updating the global parameters, in Bayesian models that also contain observation specific latent paratemeters, using a stochastic gradient descent optimization method. This method iteratively computes a cheap and noisy gradient of the ELBO to refine the currrent global paramter estimate. The term "cheap" is aptly used because it relies on a random subset of the complete dataset, and "noisy" describes the stochasticity of the estimate. Stochastic optimizations algorithms work with noisy yet unbiased approximations of the orginal optimization objective. @Robbins1951 demonstrated that employing a diminishing step size $\rho_{t}$, subject to the conditions outlined in [Appendix @sec-r-m-algo], guarantees the algorithm's ultimate convergence to a local optimum because the ELBO is a non-convex objective. Furthermore, noisy gradients are more computationally cost-effective and frequently help in circumventing local optima in complex objective functions [@Hoffman2012, p. 1317]. It is generally the case that in many statistical estimation problems one deals with a sum of terms in the objective function and thus also in the gradient. Consider f.e. the ELBO in the Bayesian linear regression model from @sec-binf, where the ELBO can be written as
+
+\begin{align}
+    \text{ELBO}(\phivec) &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( p(\yvec| \X, \thetavec) p(\thetavec) \right) \right] - \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( q(\thetavec | \phivec) \right) \right] \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \prod_{i=1}^{n} p(y_{i} | \xvec_{i}, \thetavec ) p(\thetavec) \right) \right] - \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( q(\thetavec | \phivec) \right) \right] \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ \sum_{i=1}^{n} \ln \left( p(y_{i} | \xvec_{i}, \thetavec) \right)  + \ln \left( p(\thetavec) \right) \right] - \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( q(\thetavec | \phivec) \right) \right] \\
+    &= \sum_{i=1}^{n} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( p(y_{i}| \xvec_{i}, \thetavec ) \right) \right] +  \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( p(\thetavec) \right) \right] - \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( q(\thetavec | \phivec) \right) \right] \label{eq-elbo-breg}.
+\end{align}
+
+The initial component of the ELBO in \eqref{eq-elbo-breg} represents the expected likelihood, which, in turn, entails a summation across all observations. This enables us to efficiently employ a random subset of the dataset, resulting in an unbiased approximation of the ELBO. Let us first introduce a discrete uniform random variable that chooses one index or a set of size M (one minibatch) of the data.
+
+$$
+\mathcal{I}_{m} \sim U(1, \dots, N), \ \mathcal{I}_{m} \in \{1, \dots, N \}, \ \forall m \in \{1, \dots, M\}
+$$
+
+When dealing with a set of indices, one can choose between sampling with or without replacement [@Hoffman2012, p. 1320]. This allows us to construct a random function that is a noisy yet unbiased approximation of \eqref{eq-elbo-breg}.
+
+$$
+\text{ELBO}(\phivec)_{\mathcal{I}} = \frac{N}{M} \sum_{m = 1}^{M} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( p(y_{\mathcal{I}_{m}}| \xvec_{\mathcal{I}_{m}}, \thetavec ) \right) \right] +  \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( p(\thetavec) \right) \right] - \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( q(\thetavec | \phivec) \right) \right]
+$$ {#eq-elbo-breg-approx}
+
+$\mathcal{I}$ denotes the dependence, of the noisy ELBO, on the set of discrete uniform random variable(s). The expectation of (@eq-elbo-breg-approx) over the discrete uniform random variable(s) is equal to the ELBO objective in \eqref{eq-elbo-breg}. Hence, the gradient of (@eq-elbo-breg-approx) constitutes a noisy yet unbiased estimate of the ELBO's gradient, which can be used in stochastic gradient descent. The objective function given by $\text{ELBO}(\phivec)$, is replaced by a random function $\text{ELBO}(\phivec)_{\mathcal{I}}$. This random function exhibits the property $\text{E}_{\mathcal{I}} \left[ \text{ELBO}(\phivec)_{\mathcal{I}} \right] = \text{ELBO}(\phivec)$^[I am not shure over what the expectation is formed, in my opinion over the random index, @Hoffman2012 [p. 1317] write over the variational distribution ?!], enabling us to extend this result to the gradients:  $\text{E}_{\mathcal{I}} \left[ \nabla_{\phivec} \text{ELBO}(\phivec)_{\mathcal{I}} \right] = \nabla_{\phivec} \text{ELBO}(\phivec)$. In essence the algorithm optimizes $\text{ELBO}(\phivec)$ by iteratively using realizations of $\nabla_{\phivec} \text{ELBO}(\phivec)_{\mathcal{I}}$. In each iteration $t$ we update the variational parameters in the following way
+
+$$
+\begin{split}
+    \phivec^{t} = \phivec^{t-1} + \rho_{t} \nabla_{\phivec} \text{ELBO}(\phivec)_{\mathcal{I}^{t}} \Bigr\rvert_{\phivec = \phivec^{t-1}}.
+\end{split}
+$$
+
+$\mathcal{I}^{t}$ is an independent realization of the random indexes and the noisy gradient is evaluated at $\phivec^{t-1}$. For a model that comprises only global parameters, the efficiency gain is relatively minor, primarily stemming from the reduction in the summation within the expected likelihood. Nevertheless, this reduction can yield significant improvements in computational efficiency, especially when dealing with large datasets. In contrast, in models incorporating local parameters, the efficiency gain is considerably greater, as there's no need to iterate through the entire dataset for each latent parameter, given their observation-specific nature.
+
+However, the ELBO and, consequently, its gradient necessitate to calculate an expectation over the variational distribution. This implies that when optimizing the ELBO, we must either possess the ability to derive a closed-form solution for this typically high-dimensional integral or resort to numerical integration techniques to approximate it.
+
+A commonly used method, particularly when the variational family adheres to the mean-field family and the factors in the variational distribution are normal distributions, is Gaussian-Hermite quadrature [@Steen1969]. While this technique demonstrates good performance for 1-D integrals, its accuracy significantly decreases when handling higher-dimensional integrals. Another numerical integration technique is the trapeziodal rule, which tends to be prohibitively computational expensive. Due to that it is common to approximate the integral in the ELBO or its gradient with Monte-Carlo integration, already introduced in @sec-binf.
+
+\begin{align}
+\text{ELBO}(\phivec) &= \int q(\thetavec | \phivec) \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] \,d \thetavec \label{eq-elbo-int}\\
+\nabla_{\phivec} \text{ELBO}(\phivec) &= \nabla_{\phivec} \int q(\thetavec | \phivec) \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] \,d \thetavec \label{eq-elbo-grad}
+\end{align}
+
+Through the utilization of Monte Carlo integration on either \eqref{eq-elbo-int} or \eqref{eq-elbo-grad}, we can effectively compute the integral, provided that we can efficiently obtain samples from the variational distribution. Applying Monte Carlo integration for the gradient computation yields
+
+$$
+\begin{split}
+    \nabla_{\phivec} \text{ELBO}(\phivec) &= \nabla_{\phivec} \int q(\thetavec | \phivec) \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] \,d \thetavec \\
+    &\approx \nabla_{\phivec} \frac{1}{S} \sum_{s=1}^{S} \left[ \ln \left( \frac{p(\yvec, \thetavec_{s} | \X)}{q(\thetavec^{s} | \phivec)} \right) \right], \ \thetavec^{s} \sim q(\thetavec | \phivec).
+\end{split}
+$$ {#eq-elbo-mc}
+
+The samples $\thetavec^{s}$ are obtained from the posterior distribution, illustrating the necessity of efficiently drawing samples from the variational distribution $q(\thetavec | \phivec)$ and evaluating it at the samples. A word of caution is warranted here, while it may appear straightforward to directly apply Monte Carlo integration to (@eq-elbo-mc) and compute the gradient, this approach is not feasible. Modifying $\phivec$ even infinitesimal renders the previously generated samples $\thetavec^{s}$ invalid, since they were originally drawn with the parameter $\phivec$ and thus depend on this parameter. This becomes apparent when analyzing the plate notation in @fig-plate-reg, where the dependence of the samples on $\phivec$ is obvious. Hence we need to modify the gradient in (@eq-elbo-mc), to be able to combine Monte Carlo integration and stochastic gradient descent optimization.
+
+```{r, engine='tikz'}
+#| label: fig-plate-reg
+#| fig-cap: "Plate notation of the dependence structure in a Bayesian regression model using Monte Carlo integration and SVI."
+#| fig-scap: "Plate notation of model dependence in Monte Carlo integration and SVI."
+
+\usetikzlibrary{bayesnet}
+
+% Plate diagram
+\begin{tikzpicture}
+    % Define nodes
+    \node[obs] (y) {$y_{i}$};
+    \node[const, above=of y] (x) {$\mathbf{x}_{i}$};
+    \node[latent, right=of y, xshift=1cm] (t) {$\boldsymbol{\theta}^{s}$};
+    \node[const, above=of t] (p) {$\boldsymbol{\phi}$};
+
+    % Connect the nodes
+    \edge [shorten <= 2pt] {x,t} {y};
+    \edge [shorten <= 2pt] {p} {t};
+
+    % Plates
+    \plate {yx} {(y)(x)} {$i = 1, \dots, n$} ;
+    \plate {t} {(t)} {$s = 1, \dots, S$} ;
+
+\end{tikzpicture}
+```
+
+In the upcoming two subsections, we will introduce two widely employed gradient estimators within the context of SVI. These estimators effectively tackle this challenge, enabling us to seamlessly integrate both the utilization of a random subset of the data and the Monte Carlo integration method for gradient computation.
+
+## Score gradient estimator {#sec-score-grd}
+
+<!-- Derive score gradient estimator -->
+
+The score gradient estimator, as introduced in @Ranganath2014, is a frequently used method for computing the gradient of the ELBO. Essentially, we first derive the theoretical gradient of the ELBO w.r.t. $\phivec$ and then employ Monte Carlo integration to approximate the expectation over the variational distribution
+
+$$
+\begin{split}
+    \nabla_{\phivec}\text{ELBO}(\phivec) &= \nabla_{\phivec} \int q(\thetavec | \phivec) \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \,d \thetavec \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ (\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \right]\\
+    &\approx \frac{1}{S} \sum_{s=1}^{S} (\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \Bigr\rvert_{\thetavec = \thetavec^{s}} \ln \left[ \frac{p(\yvec, \thetavec^{s} | \X)}{q(\thetavec_{s} | \phivec)} \right], \; \thetavec^{s} \sim q(\thetavec | \phivec).
+\end{split}
+$$
+
+This circumvents the issue outlined in @sec-svinf, as we only evaluate the gradient at the variational sample in the Monte Carlo integration. A full derivation is provided in [Appendix @sec-deriv-score-grd]. The cornerstone of the score gradient estimator lies in the derivative of the log variational distribution w.r.t. the variational parameters. Note that the gradient of the logarithm of a probability distribution is often referred to as the score function. In the context of $(\nabla_{\phivec} \ln [q(\thetavec | \phivec)])$, this gives rise to the term "score gradient estimator". For the mean-field variational family, this derivation is often straightforward. However, for more complex variational families, obtaining this derivative can be quite challenging. Interestingly, we can readily observe that this gradient solely necessitates the derivative of the logarithm of the variational distribution and samples from the variational distribution. This fundamental aspect explains the name 'black-box' algorithm, in which this gradient finds common application as it does not rely on model specific derivations or samples. Instead, it merely requires the ability to evaluate the log joint density of the model, whether it's normalized or unnormalized. This flexibility enables the application of the algorithm to arbitrary model definitions, even beyond the scope of conditionally conjugate models.
+
+It is common to employ variance reduction techniques to this gradient estimator since the score gradient has a rather high variance. This would result in very small steps during stochastic gradient descent (SGD), leading to a slow convergence [@Ranganath2014, p. 817]. The most common methods employed are Rao-Blackwellization (Casella and Robert 1996) and control variates (Ross 2002, Pasiley et al. 2012). The general idea is to replace the gradient estimator with a function that has the same expectation but a smaller mean [@Ranganath2014, p. 817]. Because
+
+$$
+\int q(\thetavec | \phivec) (\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \,d \thetavec = 0,
+$$ {#eq-exp-deriv-log-var}
+
+we can add any multiple of this equation to the score gradient estimator. Allowing for effective variance reduction techniques. A short explanation on control variates is provided in [Appendix @sec-contr-var], but for in depth details consult @Ranganath2014. The core challenge with the score gradient estimator lies in the fact that the gradient vectors $(\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \Bigr\rvert_{\thetavec = \thetavec^{s}}$ exhibit zero expectation, as illustrated in (@eq-exp-deriv-log-var). Moreover, these vectors lack any information about the posterior distribution, leading to a sluggish convergence due to the utilization of a linear combination of $S$ randomly oriented vectors.
+
+## Reparameterization gradient estimator {#sec-rep-grd}
+
+<!-- Derive the reparam. gradient estimator -->
+
+The reparameterization gradient asks the question how to obtain a better estimator/gradient for the ELBO. We want to change $\phivec$ such that the new samples from the variational distribution overlap better with the posterior distribution. Move samples with the variational parameters. In a functional senese.
 
 ## Black-box variational inference {#sec-bbvi}
+
+<!-- Introduce bbvi -->
+
+Currently due to the generalization of nonconjugate inference that applies to many models.
+
+Flurry of research on optimizing difficult variational objectives with Monte Carlo estimates of the gradient. The idea is to write the gradient of the ELBO as an expectiation, compute MC estiates of it, and then use stochastic optimization with repeated Monte Carlo gradients. The newest approaches avoid any model-specifc derivations, and are termed "black-box" inference methods from @Blei2017. Kucukelbir et al. 2016 leverage these ideas toward an automatic VI technique that works on any model written in the propabilistic programming language system Stan. Steps towards a derivation-free, easy-to-use VI algorithm.
 
 ## ELBO convergence {#sec-elbo-conv}
 

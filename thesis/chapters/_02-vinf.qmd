@@ -6,7 +6,7 @@ bibliography: ["bib/references.bib", "bib/packages.bib"]
 
 <!-- Some short (2-3 sentences on variational inference) -->
 
-In VI, we approximate the posterior distribution using a variational distribution from a family $\mathcal{D}$. Through optimization, we adjust the variational parameters to ensure that the variational distribution closely aligns with the posterior distribution in terms of the KL divergence. This optimized variational distribution subsequently becomes our most accurate approximation to the exact posterior distribution. To gain a comprehensive understanding of VI, we will initiate our exploration by examining Bayesian inference within the context of two prevalent regression models. The first is a simple Bayesian linear regression model and the second is a Bayesian logistic regression model. From this foundation, we will progressively construct the process of VI in this chapter.
+In VI, we approximate the posterior distribution using a variational distribution from a parametric family $\mathcal{D}$. Through optimization, we adjust the variational parameters to ensure that the variational distribution closely aligns with the posterior distribution in terms of the KL divergence. This optimized variational distribution subsequently becomes our most accurate approximation to the exact posterior distribution. To gain a comprehensive understanding of VI, we will initiate our exploration by examining Bayesian inference within the context of two prevalent hierarchical regression models. The first is a simple Bayesian linear regression model and the second is a Bayesian logistic regression model. From this foundation, we will progressively construct the process of VI in this chapter.
 
 ## Bayesian inference {#sec-binf}
 
@@ -29,13 +29,13 @@ In this context, the response is assumed to be conditionally multivariate normal
 \begin{align}
     p(\thetavec | \yvec, \X) &= \frac{p(\yvec, \X, \thetavec)}{p(\yvec | \X)} \\
     &= \frac{p(\yvec | \X, \thetavec)p(\thetavec)}{p(\yvec | \X)} \\
-    &= \frac{p(\yvec | \X, \thetavec)p(\thetavec)}{\int p(\yvec | \X, \thetavec)p(\thetavec) \,d \thetavec} \\
-    & \propto p(\yvec | \thetavec, \X) p(\thetavec).
+    &= \frac{p(\yvec | \X, \thetavec)p(\thetavec)}{\int p(\yvec | \X, \thetavec)p(\thetavec) \,d \thetavec} \label{eq-post-evidence} \\
+    & \propto p(\yvec | \thetavec, \X) p(\thetavec) \label{eq-post-prop}.
 \end{align}
 
-The likelihood of the model is $p(\yvec | \X, \thetavec)$, while $p(\thetavec)$ denotes the prior. For this model the prior is defined as $p(\thetavec) = p(\betavec | \muvec_{\betavec}, \Sigmabold_{\betavec})p(\sigma | \alpha_{\sigma}, \beta_{\sigma})$. In addition to calculate the posterior distribtion $p(\thetavec | \yvec, \X)$ we need the evidence $p(\yvec | \X)$, which we can obtain from the integral in the denominator of Eq. (3). Obtaining the evidence by solving this integral is generally a challenging task. However, for the category of conjugate priors, closed-form solutions do exist, allowing the posterior to follow a well-known distribution [@Held2014, pp. 179]. Achieving a closed-form expression for the complete posterior distribution is contingent on the model being a member of the exponential family (moreover requiring additional conditions on the likelihood, prior and measure) [REF]. Unfortunately, this is not the scenario with the current model specification. Furthermore, numerically solving this integral comes with a complexity of $\mathcal{O}(\left(k+1)^{n}\right)$, causing the complexity to increase exponential as the number of parameters grows. As a result, the evaluation becomes considerably demanding. Therefore, it's typical to circumvent the calculation of this integral in Bayesian inference algorithms, by concentrating solely on the proportional posterior distribution, as shown in Eq. (4).
+The likelihood of the model is $p(\yvec | \X, \thetavec)$, while $p(\thetavec)$ denotes the prior. For this model the prior is defined as $p(\thetavec) = p(\betavec | \muvec_{\betavec}, \Sigmabold_{\betavec})p(\sigma | \alpha_{\sigma}, \beta_{\sigma})$. In addition to calculate the posterior distribtion $p(\thetavec | \yvec, \X)$ we need the evidence $p(\yvec | \X)$, which we can obtain from the integral in the denominator of \eqref{eq-post-evidence}. Obtaining the evidence by solving this integral is generally a challenging task. However if the likelihood belongs to the exponential family. Then a conjugate prior exits, allowing the posterior to follow a well-known distribution in closed form [@Held2014, pp. 179]. But, this is not the case with the current model specification. Furthermore, numerically solving this integral comes with a complexity of $\mathcal{O}(\left(k+1)^{n}\right)$, causing the complexity to increase exponential as the number of parameters grows. As a result, the evaluation becomes considerably demanding. Therefore, it's typical to circumvent the calculation of this integral in Bayesian inference algorithms, by concentrating solely on the proportional posterior distribution, as shown in \eqref{eq-post-prop}.
 
-The knowledgeable reader is of course aware that the Gaussian prior for $\betavec$, along with a inverse gamma prior for $\sigma^{2}$ (we set a prior for $\sigma$ above), are each conjugate to the Gaussian likelihood. Consequently, closed-form solutions for the complete conditionals of the parameters can be derived. This implies that the inference problem can be readily solved using the famous Gibbs sampler [@Geman1984; @Gelfand1990], where the complete conditionals are in the exponential family.
+The knowledgeable reader is of course aware that the multivariate normal prior for $\betavec$, along with a inverse gamma prior for $\sigma^{2}$ (we set a prior for $\sigma$ above), are each conjugate to the Gaussian likelihood. Consequently, closed-form solutions for the complete conditionals of the parameters can be derived. This implies that the inference problem can be readily solved using the famous Gibbs sampler [@Geman1984; @Gelfand1990], where the complete conditionals are in the exponential family. Nonetheless, the complete posterior does not adhere to a recognized closed-form distribution.
 
 For predictive purposes, our objective is to determine the posterior predictive distribution. This distribution is the conditional distribution for the predicted response conditional on both the observed data and, in this instance, the covariates at a new specified value, which are assumed to be fixed.
 
@@ -43,9 +43,11 @@ $$
     p(\hat{y} | \hat{\xvec}, \yvec, \X) = \int p(\hat{y}, \thetavec | \hat{\xvec}, \yvec, \X) \,d \thetavec = \int p(\hat{y} | \hat{\xvec}, \thetavec) p(\thetavec | \yvec, \X) \,d \thetavec
 $$ {#eq-post-pred}
 
-To obtain the predictive distribution, we expand the posterior predictive by incorporating the parameters and subsequently integrating them out. In the subsequent step, we disentangle the joint distribution of predictions and parameters into its constituent parts: the predictive distribution and the posterior distribution. This examination shows that the posterior predictive^[In Bayesian statistics it is common to differentiate also between the prior predictive distribution and the posterior predictive distribution. The prior predictive distribtion just uses $p(\thetavec)$, instead of $p(\thetavec | \yvec, \X)$ in (@eq-post-pred).] accounts for the additionally uncertainity that comes from the parameters $\thetavec$, integrating these parameters out. This is in contrats to plug-in prediction which uses a single estimate $\hat{\thetavec}$ of the parameters to predict new values, resulting in the predictive density $p(\hat{y} | \hat{\xvec}, \hat{\thetavec})$ [@Held2014, pp. 291].
+To obtain the predictive distribution, we expand the posterior predictive by incorporating the parameters and subsequently integrating them out. In the subsequent step, we disentangle the joint distribution of predictions and parameters into its constituent parts: the predictive distribution and the posterior distribution. This examination shows that the posterior predictive^[In Bayesian statistics it is common to also differentiate between the prior predictive distribution and the posterior predictive distribution. The prior predictive distribtion just uses $p(\thetavec)$, instead of $p(\thetavec | \yvec, \X)$ in (@eq-post-pred).] accounts for the additionally uncertainity that comes from the parameters $\thetavec$, integrating these parameters out. This is in contrats to plug-in prediction which uses a single estimate $\hat{\thetavec}$ of the parameters to predict new values, resulting in the predictive density $p(\hat{y} | \hat{\xvec}, \hat{\thetavec})$ [@Held2014, pp. 291].
 
-The posterior predictive density in (@eq-post-pred) is a compound probability distribution where we integrate out the parameters of the model. Evaluation of this integral can be challenging aswell [REF]. Thus numerical methods are commonly employed. (Maybe add sentence that for a certain class of models in the exponential family there are closed form solutions for the posterior predictive). A technique that is both simple and powerful involves utilizing Monte Carlo integration. This becomes possible once we possess samples from the posterior distribution, such as those generated through methods like MCMC, or when we possess a fully defined posterior, whether it's in closed form or represented through an approximation. The crucial point is our ability to derive samples from this distribution, enabling the application of Monte Carlo integration for approximating the integral, as demonstrated in (@eq-post-pred-mc).
+The posterior predictive density in (@eq-post-pred) is a compound probability distribution where we integrate out the parameters of the model. Of course, if the prior is conjugate to the likelihood, closed form solutions for the posterior predicitve exist [@Held2014, pp. 303]. But for models that are non-conjugate evaluation of this integral can be challenging aswell. Thus numerical methods are commonly employed.
+
+A technique that is both simple and powerful involves utilizing classical Monte Carlo integration. This becomes possible once we possess samples from the posterior distribution, such as those generated through methods like MCMC, or when we possess a fully defined posterior, whether it's in closed form or represented through an approximation. The crucial point is our ability to derive samples from this distribution, enabling the application of Monte Carlo integration for approximating the integral, as demonstrated in (@eq-post-pred-mc).
 
 $$
 \begin{split}
@@ -55,13 +57,15 @@ $$
 \end{split}
 $$ {#eq-post-pred-mc}
 
-This becomes feasible due to the assurance provided by Monte Carlo integration [REF] that
+This becomes feasible due to the assurance provided by the strong law of large numbers [@Robert2004, pp.74] that
 
 $$
 \begin{split}
 \text{E}_{p(\thetavec | \yvec, \X)} \left[ p(\hat{y} | \hat{\xvec}, \thetavec) \right] &= \lim_{S \to \infty} \frac{1}{s} \sum_{s=1}^{S} p(\hat{y} | \hat{\xvec}, \thetavec^{s}), \ \thetavec^{s} \sim p(\thetavec | \yvec, \X) .
 \end{split}
 $$
+
+It is crucial to remember that we now either assumed to have samples from the posterior distribution or possess the ability to sample from the exact posterior distribution. If we only have an approximate distribution of the posterior, we can only derive an approximate posterior predictive.
 
 <!-- Show the same with Bayesian logistic regression -->
 
@@ -74,16 +78,16 @@ $$
 \end{split}
 $$
 
-The response takes values for $y_{i} \in \{0,1\}$ and follows a Bernoulli distribution. Moreover has the paramter vector $\betavec$ a multivariate normal distributed prior. The linear predictor $\eta_{i} = \xvec_{i}^{\mathrm{T}} \betavec$ is connected to the expected value of the response via the sigmoid function $\text{E}[y_{i}] = \pi_{i} = \sigma(\eta_{i}) = \frac{1}{1 + \exp(- \eta_{i})}$, also referred to as inverse link function. While the linear predictor is defined over $\mathbb{R}$, the mean of the reponse is constrained to $\text{E}[y_{i}] = \pi_{i} \in [0,1]$, thus appropriately respecting the paramter space requirements of a probability. Subsequently, the posterior is formulated as follows
+The response takes values for $y_{i} \in \{0,1\}$ and follows a conditional Bernoulli distribution. Moreover has the paramter vector $\betavec$ a multivariate normal distributed prior. The linear predictor $\eta_{i} = \xvec_{i}^{\mathrm{T}} \betavec$ is connected to the expected value of the response via the sigmoid function $\text{E}[y_{i} | \xvec_{i}, \betavec] = \pi_{i} = \sigma(\eta_{i}) = \frac{1}{1 + \exp(- \eta_{i})}$, such functions are more broadly also referred to as inverse link functions. While the linear predictor is defined over $\mathbb{R}$, the mean of the reponse is constrained to $\text{E}[y_{i} | \xvec_{i}, \betavec] = \pi_{i} \in [0,1]$, thus appropriately respecting the paramter space requirements of a probability. Subsequently, the posterior is formulated as follows
 
 $$
 \begin{split}
     p(\betavec | \yvec, \X) &= \frac{p(\yvec | \X, \betavec) p(\betavec)}{p(\yvec | \X)} \\
-    &= \frac{\prod_{i=1}^{n}p(y_{i} | \xvec_{i}, \betavec)p(\betavec)}{p(\yvec | \X)}
+    &= \frac{\prod_{i=1}^{n}p(y_{i} | \xvec_{i}, \betavec)p(\betavec)}{p(\yvec | \X)}.
 \end{split}
 $$
 
-The multiplication of discrete and continuous probability distributions doesn't facilitate the straightforward derivation of a posterior distribution. As a result, we require approximate inference methods to attain the posterior. Furthermore, prediction essentially operates under the same principles as outlined in (@eq-post-pred). Keeping the objectives of Bayesian inference in mind, we can proceed to formulate the optimization criterion that addresses the inference problem in VI.
+The multiplication of the Bernoulli likelihood and the multivariate normal prior doesn't facilitate the straightforward derivation of a posterior distribution. As a result, we require approximate inference methods to attain the posterior. Prediction essentially operates under the same principles as outlined in (@eq-post-pred). Keeping the objectives of Bayesian inference in mind, we can proceed to formulate the optimization criterion that addresses the inference problem in VI.
 
 ...
 
@@ -105,32 +109,30 @@ $$ {#eq-kl-div}
 
 Parameters of interest are again collected in $\thetavec$. Upon solving this optimization problem, $q^{*}(\thetavec)$ represents our most accurate approximation to the exact posterior. It's important to keep in mind that the scope of the family $\mathcal{D}$ defines the complexity of the optimization problem. However, while this objective offers valuable theoretical insight, it remains infeasible to compute due to the requirement for the exact posterior to evaluate it. Consequently, obtaining the evidence for evaluation becomes necessary, which has been shown to be generally challenging.
 
-But we can also introduce an alternative criterion that possesses mathematical equivalence, in terms of the optimized variational distribution, but offers the advantage of efficient solvability. Begin by considering the log evidence $\ln(p(\yvec | \yvec, \X))$ as a foundational point. Our goal is now to show that the log evidence is bounded from below by the so called evidence lower bound (ELBO)
+Never the less we can also introduce an alternative criterion that possesses mathematical equivalence, in terms of the optimized variational distribution, but offers the advantage of efficient solvability. Begin by considering the log evidence $\ln(p(\yvec | \X))$ as a foundational point. Our goal is now to show that the log evidence is bounded from below by the so called **e**vidence **l**ower **bo**und (ELBO), which is defined as
 
 $$
 \text{ELBO}(\phivec) = \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right].
-$$
+$$ {#eq-elbo}
 
-Where we now introduced $\phivec$, this vector represent the parameters of the variational distribution. Consequently we fixed the variational family to a certain parameterized class of distributions. The ELBO, lacking the evidence term, allows for easier evaluation. Through the subsequent derivation, we can demonstrate the ability to decompose the evidence into the sum of the ELBO and the KL divergence.
+Where we now introduced $\phivec$, this vector represent the parameters of the variational distribution. Consequently we fixed the variational family to a certain parameterized family of distributions. The ELBO, lacking the evidence term, allows for easier evaluation. Through the subsequent derivation, we can demonstrate the ability to decompose the evidence into the sum of the ELBO and the KL divergence.
 
-$$
-\begin{split}
+\begin{align}
     \ln(p(\yvec | \X)) &= \int q(\thetavec | \phivec) \ln(p(\yvec | \X)) \,d \thetavec \\
     &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec | \X) p(\thetavec | \yvec, \X)}{p(\thetavec | \yvec, \X)} \right) \,d \thetavec \\
     &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec, \thetavec | \X)}{p(\thetavec | \yvec, \X)} \right) \,d \thetavec \\
     &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \frac{q(\thetavec | \phivec)}{p(\thetavec | \yvec, \X)} \right) \,d \thetavec \\
     &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \,d \thetavec + \int q(\thetavec | \phivec) \ln \left( \frac{q(\thetavec | \phivec)}{p(\thetavec | \yvec, \X)} \right) \,d \thetavec \\
-    &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] + \text{D}_{\text{KL}}(q(\thetavec | \phivec) || p(\thetavec | \yvec, \X))
-\end{split}
-$$ {#eq-log-evidence}
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] + \text{D}_{\text{KL}}(q(\thetavec | \phivec) || p(\thetavec | \yvec, \X)) \label{eq-log-evidence}
+\end{align}
 
-Building upon this outcome, we can now establish that the ELBO serves as a lower bound for the log evidence, given that the KL divergence between $q$ and $p$ is always $\geq 0$, i.e. $\text{D}_{\text{KL}}(q || p) \geq 0$ [@Kullback1951] (neglecting the random variables and parameters of $q$ and $p$ for notational convenience). Hence we obtain
+Building upon this outcome, we can now establish that the ELBO serves as a lower bound for the log evidence, given that the KL divergence between $q$ and $p$ is always $\geq 0$, i.e. $\text{D}_{\text{KL}}(q || p) \geq 0$ [@Kullback1951]^[We neglect the random variables and parameters of $q$ and $p$ for notational convenience.]. Hence we obtain
 
 $$
 \ln(p(\yvec | \X)) \geq \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right].
 $$
 
-This fact established the name ELBO. Both quantities are equal iff $q(\thetavec | \phivec) = p(\thetavec | \yvec, \X)$. We are now in a place to bring everything together and demonstrate the equivalence of maximizing the ELBO w.r.t. $q$ and minimizing the KL divergence w.r.t. $q$. Rearranging (@eq-log-evidence) to
+This fact established the name ELBO. Both quantities are equal iff $q(\thetavec | \phivec) = p(\thetavec | \yvec, \X)$. @Jordan1999 orginially derived the ELBO with Jensen's inequality. We are now in a place to bring everything together and demonstrate the equivalence of maximizing the ELBO w.r.t. $q$ and minimizing the KL divergence w.r.t. $q$. Rearranging \eqref{eq-log-evidence} to
 
 $$
 \ln(p(\yvec | \X)) - \text{D}_{\text{KL}}(q || p) = \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right],
@@ -142,17 +144,17 @@ $$
 \begin{split}
     \argmax_{\phivec} \ln(p(\yvec | \X)) - \text{D}_{\text{KL}}(q || p) &= \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] \\
     \argmax_{\phivec} - \text{D}_{\text{KL}}(q || p) &= \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] \\
-    \argmin_{\phivec} \text{D}_{\text{KL}}(q || p) &= \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right]
+    \argmin_{\phivec} \text{D}_{\text{KL}}(q || p) &= \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right].
 \end{split}
 $$
 
-As the log evidence does not depend on the variational distribution it is a constant in this maximization problem and can thus be omittd. Moreover this shows that maximizing the ELBO w.r.t. $\phivec$ is equivalent to minimizing the KL divergence. Hence we make $q$ as similar as possible to the exact posterior in both cases. Thus we can finally state the optimization criterion that is solved in VI
+As the log evidence does not depend on the variational distribution it is a constant in this maximization problem and can thus be omitted. Since maximizing a negative objective is equivalent to minimizing that objective, we can rewrite the argmax of the negative KL divergence as the argmin of the KL divergence. This shows that maximizing the ELBO w.r.t. $\phivec$ is equivalent to minimizing the KL divergence. Hence we make $q$ as similar as possible to the exact posterior in both cases. Thus we can finally state the optimization criterion that is solved in VI
 
 $$
 \hat{\phivec} = \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right].
-$$ {#eq-eblo-opt}
+$$ {#eq-elbo-opt}
 
-@Blei2017 [pp. 6] provide a good intuition of the ELBO and the optimal variational density. We can rewrite the ELBO also as
+Such that our best approximation of the posterior, after solving this optimization problem, is $q(\thetavec | \hat{\phivec})$. @Blei2017 [pp. 6] provide a good intuition of the ELBO and the resulting optimal variational density. We can rewrite the ELBO also as
 
 $$
 \begin{split}
@@ -163,11 +165,11 @@ $$
 \end{split}
 $$
 
-This decomposition depcits that maximization of the ELBO will motivate variational densities for $\thetavec$ that explain the data and at the same time are similar to the prior density. Because we want to increase the expected log-likelihood as much as possible and at the same time decrease the KL divergence between the variational distribution and the prior. Thus the ELBO mimics the balance of likelihood and prior.
+This decomposition depcits that maximization of the ELBO will motivate variational densities for $\thetavec$ that explain the data and at the same time are similar to the prior density. Because we want to increase the expected log-likelihood as much as possible and at the same time decrease the KL divergence between the variational distribution and the prior. Thus the ELBO mimics the common balance of likelihood and prior.
 
 ...
 
-TBD: Include Figure of ELBO to show how the convergence looks like.
+TBD: Include Figure of ELBO to show how the convergence looks like. Also mention that the ELBO is in general a non-convex objective function. Thus optimization can only guarantee convergence to a local optimum which is sensitive to intialization.
 
 ...
 
@@ -186,11 +188,11 @@ $$
 
 Where we decomposed $\thetavec$ as $\thetavec = (\theta_{1}, \dots, \theta_{j} , \dots, \theta_{m})^{\mathrm{T}}$ and $\phivec$ as $\phivec = \left( \phivec_{1}^{\mathrm{T}}, \dots, \phivec_{j}^{\mathrm{T}}, \dots, \phivec_{m}^{\mathrm{T}} \right)^{\mathrm{T}}$. The factors $q_{j}$ can take any parametric form, however are usually chosen to respect the parameter space correctly. Hence using a normal distribution for a continuous parameter. Log-normal or inverse gamma distributions might be desirable for continuous parameters that are restricted to $\mathbb{R}_{+}$. Categorical paramters are of course best represented by categorical distributions. During the optimization of the ELBO each factor of the variational distribution is choosen, and thus its parameters $\phivec_{j}$, to maximize the ELBO.
 
-Even though the mean-field family can fit any marginal density to the parameters, the assumption of independence among all parameters could potentially be overly restrictive. Therefore, there might be a desire to introduce dependencies between parameters that are interdependent, this concept is referred to in literature as structured variational inference [@Hoffman2014]. Of course, incorporating structural variational inference naturally augments the complexity of the optimization problem.
+Even though the mean-field family can fit any marginal density to the parameters, the assumption of independence among all parameters could potentially be overly restrictive. Therefore, there might be a desire to introduce dependencies between parameters that are interdependent. Of course, incorporating dependencies naturally augments the complexity of the optimization problem.
 
-![Mean-field approximation to a 2-D multivariate normal distribution, based on @Blei2017 [p. 9, Figure 1].](assets/plots/plot1.pdf){width=60% #fig-mean-field}
+![Mean-field approximation to a 2-D multivariate normal distribution, based on @Blei2017 [p. 9, Figure 1].](assets/plots/plot1.pdf){width=60% fig-scap="Mean-field approximation" #fig-mean-field}
 
-@fig-mean-field exemplifies how the mean-field variational distribution disregards the dependence between the two parameters (f.e. regression coefficients). Despite correctly identifying the mean, it fails to capture their interdependence. This serves as an illustration that the variational approximation of the posterior can exhibit significant inaccuracy when the variational family is subject to substantial constraints. Furthermore, the marginal variances of the variational distribution are smaller than those of the exact posterior. This outcome is a consequence of utilizing the zero-avoiding KL divergence, denoted as $\text{D}_{\text{KL}}(q || p)$, which endeavors to minimize $q$ whenever $p$ is minimized. An alternative approach involves employing the density-covering KL divergence, $\text{D}_{\text{KL}}(p || q)$, which seeks to maximize $q$ whenever $p$ is maximized. This concern becomes particularly pronounced when the posterior assumes multiple modes, while the variational density only accommodates a single mode. Consequently, a branch of research is dedicated to exploring alternative measures for VI, as discussed in @Bishop2008 [pp. 466].
+@fig-mean-field exemplifies how the mean-field variational distribution disregards the dependence between the two parameters (f.e. regression coefficients). Despite correctly identifying the mean, it fails to capture their interdependence. This serves as an illustration that the variational approximation of the posterior can exhibit significant inaccuracy when the variational family is subject to substantial constraints. Furthermore, the marginal variances of the variational distribution are smaller than those of the exact posterior. This outcome is a consequence of utilizing the zero-avoiding KL divergence, denoted as $\text{D}_{\text{KL}}(q || p)$, which endeavors to minimize $q$ whenever $p$ is small. An alternative approach involves employing the density-covering KL divergence, $\text{D}_{\text{KL}}(p || q)$, which seeks to maximize $q$ whenever $p$ is large. This concern becomes particularly pronounced when the posterior assumes multiple modes, while the variational density only accommodates a single mode. Consequently, a branch of research is dedicated to exploring alternative measures for VI, as discussed in @Bishop2008 [pp. 466].
 
 Reconsider the problem of inference in Bayesian linear regression from section @sec-binf. In a first step we could introduce only one factor in the variational distribution for all regression parameters $\betavec$, hence allowing for dependencies between the regression parameters as a simple augmentation, resulting in
 
@@ -198,25 +200,25 @@ $$
 q(\thetavec | \phivec) = q_{\betavec}(\betavec | \phivec_{\betavec} )q_{\sigma}(\sigma | \phivec_{\sigma}).
 $$
 
-The factor for $\betavec$ can be choosen to be a multivariate normal distribution and the factor for $\sigma$ f.e. a log-normal distribution. During optimization we would optimize the mean vector and the covariance matrix of the factor for $\betavec$. This would allow to learn the posterior in @fig-mean-field, by providing more structure to the variational distribution. Strictly speaking this example would however still be considered as mean-field inference, as we only augmented the mean-field variational family to blocks of parameters.
+The factor for $\betavec$ can be choosen to be a multivariate normal distribution and the factor for $\sigma$ f.e. a log-normal distribution. During optimization we would optimize the mean vector and the covariance matrix of the factor $q_{\betavec}$. This would allow to learn the posterior in @fig-mean-field, by providing more structure to the variational distribution. Essentially augmenting the mean-field varational family on blocks of parameters.
 
-Upon defining both the variational family and the joint distribution of the model, which comprises likelihood and priors, we have completely defined the ELBO and are ready to employ strategies to solve this problem.
+TBD: Explain shortly the concept of structured VI, ready paper first [@Hoffman2014].
+
+Upon defining both the variational family and the joint distribution of the model, which comprises likelihood and priors, we have completely defined the ELBO and are ready to employ strategies to solve this optimization problem.
 
 ## Coordinate ascent mean-field variational inference {#sec-cavi}
 
 <!-- Short section on CAVI -->
 
-One of the first algorithms to solve the VI optimization problem was coordinate ascent variational infernece (CAVI) and is closely connected to the Gibbs sampler [@Bishop2008] (better reference). The algorithm uses the mean-field variational family over blocks of parameters and iteratively optimizes the ELBO for each factor, while holding the other factors fixed [@Blei2017] (change sentence, to close to reference). Each variational factor can be shown to be proportional to
+One of the most widespread inference algorithms to solve VI is coordinate ascent variational inference (CAVI) and is closely connected to the Gibbs sampler [@Bishop2008]. The algorithm uses the mean-field variational family over blocks of parameters and iteratively optimizes the ELBO for each factor, while holding the other factors fixed [@Blei2017]. If the model falls within the category of conditionally conjugate models, in which its complete conditionals are part of the exponential family, it can be demonstrated that each optimal factor is proportional to
 
-$$
-\begin{split}
-    q_{j}(\thetavec_{j} | \phivec_{j}) &\propto \exp \left\{ \text{E}_{-j} \left[ \ln(p(\thetavec_{j}| \thetavec_{-j}, \yvec, \X)) \right] \right\} \\
-    &\propto \exp \left\{ \text{E}_{-j} \left[ \ln(p(\thetavec_{j}, \thetavec_{-j}, \yvec | \X)) \right] \right\}
-\end{split}
-$$ {#eq-factor-cavi}
+\begin{align}
+    q_{j}(\thetavec_{j} | \phivec_{j}) &\propto \exp \left\{ \text{E}_{-j} \left[ \ln(p(\thetavec_{j}| \thetavec_{-j}, \yvec, \X)) \right] \right\} \label{eq-factor-cavi}\\
+    &\propto \exp \left\{ \text{E}_{-j} \left[ \ln(p(\thetavec_{j}, \thetavec_{-j}, \yvec | \X)) \right] \right\}.
+\end{align}
 
-We now also decomposed $\thetavec$ into $\thetavec = \left( \thetavec_{1}^{\mathrm{T}}, \dots, \thetavec_{j}^{\mathrm{T}}, \dots, \thetavec_{m}^{\mathrm{T}} \right)^{\mathrm{T}}$ and $\thetavec_{-j}$ is $\thetavec$ excluding block $\thetavec_{j}$. $\text{E}_{-j} \left[ \ln(p(\thetavec_{j}| \thetavec_{-j}, \yvec, \X)) \right]$ is the expected log of the complete conditional and the expectation is taken over $\thetavec_{-j}$ thus $\prod_{l \neq j}q_{l}(\thetavec_{l} | \phivec_{l})$. In some cases this allows to find a analytically distribution for $\thetavec_{j}$ given the parameters in the other blocks $\thetavec_{-j}$. Notably Equation (@eq-factor-cavi) uses the same complete conditional as is found in Gibbs sampling [@Geman1984], which explains their similarity. Allowing us to iteratively update the parameters of the factors to climb the ELBO.
+We now also decomposed $\thetavec$ into $\thetavec = \left( \thetavec_{1}^{\mathrm{T}}, \dots, \thetavec_{j}^{\mathrm{T}}, \dots, \thetavec_{m}^{\mathrm{T}} \right)^{\mathrm{T}}$ and $\thetavec_{-j}$ is $\thetavec$ excluding the parameter block $\thetavec_{j}$. $\text{E}_{-j} \left[ \ln(p(\thetavec_{j}| \thetavec_{-j}, \yvec, \X)) \right]$ is the expected log of the complete conditional and the expectation is taken over $\thetavec_{-j}$ and thus $\prod_{l \neq j}q_{l}(\thetavec_{l} | \phivec_{l})$. Moreover are the optimal parameters $\phivec_{j}$ of the factor equal to the expected parameter of the complete conditional [@Blei2017, pp. 17]. Hence we found analytical distributions for $\thetavec_{j}$ given the parameters in the other blocks $\thetavec_{-j}$. Typically, we can further reduce the number of parameters we condition on, focusing solely on those within the Markov blanket of $\thetavec_{j}$. Notably \eqref{eq-factor-cavi} uses the same complete conditional as is found in Gibbs sampling [@Geman1984], which explains their similarity. These results allows us, after initialization, to iteratively update the parameters of the optimal factors to progressively maximize the ELBO [@Hoffman2012].
 
-The effectiveness of CAVI hinges upon the solvability of the expectation and hence our ability to derive an analytical expression for the factor $q_{j}$. This is the case if the complete conditional is in the exponential family, meaning for the class of conditionally conjugate models [@Blei2017, pp. 17]. In general, CAVI demands numerous derivations and does not scale effectively. Nevertheless, there exist generalization results for models within the exponential family. Naturally, when dealing with models outside the scope of conjugacy, alternative algorithms become necessary for solving the ELBO. Another widely recognized drawback of CAVI is its inefficiency in handling intricate models at scale.
+The effectiveness of CAVI hinges upon our ability to derive an analytical expression for the optimal factors $q_{j}$ and thus also for the optimal variational parameters. In general, CAVI requires a multitude of derivations for each factor and the ELBO. Nevertheless, there exist generalization results for models within the exponential family [@Blei2017, pp. 18]. Naturally, when dealing with models outside the scope of conditional conjugacy, alternative algorithms become necessary for solving the ELBO. Another well-recognized limitation of classical CAVI is its inefficiency in handling large-scale models. The algorithm consistently requires to iterate through the entire dataset in every iteration. This is the rationale behind @Hoffman2012's development of SVI for CAVI, which empowers CAVI to efficiently manage sizable datasets.
 
-Given the focus of this thesis on black-box variational inference, we refer to the work by @Blei2017 for an in-depth exploration of CAVI. Subsequently, we proceed with more comprehensive strategies for tackling the optimization problem.
+Given the focus of this thesis on black-box variational inference for Bayesian GAMLSS models, we refer to the work by @Blei2017, @Bishop2008 and @Hoffman2012 for an in-depth exploration of CAVI. Subsequently, we proceed with more general strategies for tackling the optimization problem.
