@@ -18,7 +18,13 @@ The variational inference algorithm is based on [Ranganath et al. 2014](https://
 ├── playground
 ├── simulation
 ├── thesis
+│   ├── bib
+│   ├── chapters
+│   └── tex
 └── tigerpy
+    ├── bbvi
+    ├── distributions
+    └── model
 ```
 
 ## Literature
