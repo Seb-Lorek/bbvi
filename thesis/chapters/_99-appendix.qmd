@@ -18,7 +18,7 @@ $$
 \end{split}
 $$
 
-such that $\phivec_{t}$ will converge to the optimal $\hat{\phivec}$ either local or global depeding if the objective function is non-convex or convex [@Robbins1951]. Since the ELBO is a non-convex function we will converge to a local optimum. To find a local optimum, the ELBO must be three-times differentiable and must meet a few mild technical requirements (Bootou, 1998). The variational objective satisfies these criteria [@Hoffman2012, p.1318].
+such that $\phivec_{t}$ will converge to the optimal $\hat{\phivec}$ either local or global depeding if the objective function is non-convex or convex [@Robbins1951]. Since the ELBO is a non-convex function we will converge to a local optimum. To find a local optimum, the ELBO must be three-times differentiable and must meet a few mild technical requirements (Bootou, 1998). The variational objective satisfies these criteria [@Hoffman2012, p.1318]. These conditions guarantee that every in the parameter space can be reached, while gradient noise decreases quickly enough to ensure convergence [@Zhang2017, p. 5].
 
 ## Score gradient estimator {#sec-deriv-score-grd}
 
