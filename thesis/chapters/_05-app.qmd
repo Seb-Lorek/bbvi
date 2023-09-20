@@ -2,6 +2,12 @@
 bibliography: ["bib/references.bib", "bib/packages.bib"]
 ---
 
-# Application of the algorithm {#sec-app}
+# The inference algorithm and implementation {#sec-app}
 
-Here comes some information on variational inference.
+Explain inference alogorithm and give overview of use in tigerpy.
+
+## Model formulation {#sec-model-setup}
+
+## "Black-box" variational inference algorithm {#sec-bbvi-impl}
+
+## Technology {#sec-technology}
