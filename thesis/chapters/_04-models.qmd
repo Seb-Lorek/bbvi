@@ -2,7 +2,9 @@
 bibliography: ["bib/references.bib", "bib/packages.bib"]
 ---
 
-# GAMLSS models {#sec-gamlss}
+# Probabilistic modelling {#sec-prob-m}
+
+## GAMLSS models {#sec-gamlss}
 
 Theory on GAMLSS models.
 
@@ -17,3 +19,5 @@ B-spline Basis.
 Multivariate degenerate gaussian prior.
 
 Centering constrains.
+
+# DAGs {#sec-dag}

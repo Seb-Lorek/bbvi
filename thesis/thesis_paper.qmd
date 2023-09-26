@@ -43,7 +43,7 @@ crossref:
 
 {{< include chapters/_03-svinf.qmd >}}
 
-{{< include chapters/_04-gamlss.qmd >}}
+{{< include chapters/_04-models.qmd >}}
 
 {{< include chapters/_05-app.qmd >}}
 
