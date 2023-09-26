@@ -3,7 +3,6 @@ Tiger model.
 """
 
 import jax.numpy as jnp
-import numpy as np
 
 import tensorflow_probability.substrates.jax.distributions as tfjd
 import tensorflow_probability.substrates.numpy.distributions as tfnd
@@ -14,116 +13,6 @@ Array = Any
 Distribution = Union[tfjd.Distribution, tfnd.Distribution]
 
 from .observation import Obs
-
-class Model:
-    """
-    Static model.
-    """
-
-    def __init__(self, response: Array, distribution):
-        self.response = jnp.asarray(response, dtype=jnp.float32)
-        self.response_dist = distribution
-        self.log_lik = self.loglik()
-        self.log_prior = self.logprior()
-        self.log_prob = self.logprob()
-        self.num_param = self.count_param_instances(self.response_dist)
-
-    def loglik(self) -> Array:
-        """
-        Method to calculate the log-likelihood of the model.
-
-        Returns:
-            Array: Return the log-likelihood of the model.
-        """
-
-        log_lik = self.response_dist.init_dist().log_prob(self.response)
-
-        return log_lik
-
-    def logprior(self) -> Array:
-        """
-        Compute the log-prior of the model, i.e. the log-pdf/pmf of the priors.
-
-        Returns:
-            Array: Log-prior of the model.
-        """
-
-        # Obtain all logprior arrays from the model
-        prior_list = self.return_param_logpriors(self.response_dist)
-
-        # concatenate the flattened arrays
-        log_prior = jnp.concatenate(prior_list)
-
-        return log_prior
-
-    def logprob(self) -> Array:
-        """
-        Method to calculate the log-probability of the model, i.e. the sum of log-likelihood and log-prior.
-
-        Returns:
-            Array: Log-probability of the model.
-        """
-
-        return jnp.sum(self.log_lik) + jnp.sum(self.log_prior)
-
-    def return_param_logpriors(self, obj: Any) -> list:
-        """
-        Method to obtain all log-probabilites of the classes Param. The method has a
-        recursive structure.
-
-        Args:
-            obj (Any): Class distribution of the response (nested class structure).
-
-        Returns:
-            list: Return a list with all log-probabilites.
-        """
-
-        l = []
-
-        if isinstance(obj, Param):
-            l.append(obj.log_prior)
-
-        elif isinstance(obj, (list, tuple)):
-            for item in obj:
-                l.extend(self.return_param_logpriors(item))
-
-        elif isinstance(obj, dict):
-            for value in obj.values():
-                l.extend(self.return_param_logpriors(value))
-
-        elif hasattr(obj, "__dict__"):
-            l.extend(self.return_param_logpriors(obj.__dict__))
-
-        return l
-
-    def count_param_instances(self, obj: Any) -> int:
-        """
-        Method to count the number of parameters in the model. The method
-        has a recursive structure.
-
-        Args:
-            obj (Any): Class distribution of the response (nested class structure).
-
-        Returns:
-            int: Number of parameters in the model.
-        """
-
-        count = 0
-        if isinstance(obj, Param):
-            count += obj.dim[0]
-
-        if isinstance(obj, (list, tuple)):
-            for item in obj:
-               count += self.count_param_instances(item)
-
-        elif isinstance(obj, dict):
-            for value in obj.values():
-                count += self.count_param_instances(value)
-
-        elif hasattr(obj, "__dict__"):
-            count += self.count_param_instances(obj.__dict__)
-
-        return count
 
 class Hyper:
     """
@@ -160,7 +49,6 @@ class Dist:
         dist = self.distribution(**kwargs)
         return dist
 
-
     def get_dist(self) -> Distribution:
         """
         Method to get the tensorflow probability distribution of the class Dist.
@@ -181,7 +69,7 @@ class Param:
         self.distribution = distribution
         self.param_space = param_space
         self.name = name
-        self.dim = self.value.shape
+        self.dim = self.value.shape[0]
         self.log_prior = self.logprior(value=self.value)
 
     def logprior(self, value: Array) -> Array:
@@ -204,11 +92,11 @@ class Lpred:
     Linear predictor.
     """
 
-    def __init__(self, Obs: Obs, function: Any = None, **kwinputs: Any):
-        self.Obs = Obs
+    def __init__(self, obs: Obs, function: Any = None, **kwinputs: Any):
+        self.obs = obs
         self.function = function
         self.kwinputs = kwinputs
-        self.design_matrix = jnp.asarray(self.Obs.design_matrix, dtype=jnp.float32)
+        self.design_matrix = jnp.asarray(self.obs.design_matrix, dtype=jnp.float32)
         self.params_values = self.update_params()
         self.value = self.update_lpred()
 
@@ -246,3 +134,112 @@ class Lpred:
             m = nu
 
         return m
+
+class Model:
+    """
+    Static model.
+    """
+
+    def __init__(self, response: Array, distribution: Dist):
+        self.response = jnp.asarray(response, dtype=jnp.float32)
+        self.response_dist = distribution
+        self.log_lik = self.loglik()
+        self.log_prior = self.logprior()
+        self.log_prob = self.logprob()
+        self.num_param = self.count_param_instances(self.response_dist)
+        self.num_obs = self.response.shape[0]
+
+    def loglik(self) -> Array:
+        """
+        Method to calculate the log-likelihood of the model.
+
+        Returns:
+            Array: Return the log-likelihood of the model.
+        """
+
+        log_lik = self.response_dist.init_dist().log_prob(self.response)
+
+        return log_lik
+
+    def logprior(self) -> Array:
+        """
+        Compute the log-prior of the model, i.e. the log-pdf of the priors.
+
+        Returns:
+            Array: Log-prior of the model.
+        """
+
+        prior_list = self.return_param_logpriors(self.response_dist)
+
+        log_prior = jnp.concatenate(prior_list)
+
+        return log_prior
+
+    def logprob(self) -> Array:
+        """
+        Method to calculate the log-probability of the model, i.e. the sum of log-likelihood and log-prior.
+
+        Returns:
+            Array: Log-probability of the model.
+        """
+
+        return jnp.sum(self.log_lik) + jnp.sum(self.log_prior)
+
+    def return_param_logpriors(self, obj: Any) -> list:
+        """
+        Method to obtain all log-probabilites of the classes Param. The method has a
+        recursive structure.
+
+        Args:
+            obj (Any): Class distribution of the response (nested class structure).
+
+        Returns:
+            list: Return a list with all log-probabilities.
+        """
+
+        log_priors = []
+
+        if isinstance(obj, Param):
+            log_priors.append(obj.log_prior)
+
+        elif isinstance(obj, (list, tuple)):
+            for item in obj:
+                log_priors.extend(self.return_param_logpriors(item))
+
+        elif isinstance(obj, dict):
+            for value in obj.values():
+                log_priors.extend(self.return_param_logpriors(value))
+
+        elif hasattr(obj, "__dict__"):
+            log_priors.extend(self.return_param_logpriors(obj.__dict__))
+
+        return log_priors
+
+    def count_param_instances(self, obj: Any) -> int:
+        """
+        Method to count the number of parameters in the model. The method
+        has a recursive structure.
+
+        Args:
+            obj (Any): Class distribution of the response (nested class structure).
+
+        Returns:
+            int: Number of parameters in the model.
+        """
+
+        count = 0
+        if isinstance(obj, Param):
+            count += obj.dim
+
+        if isinstance(obj, (list, tuple)):
+            for item in obj:
+               count += self.count_param_instances(item)
+
+        elif isinstance(obj, dict):
+            for value in obj.values():
+                count += self.count_param_instances(value)
+
+        elif hasattr(obj, "__dict__"):
+            count += self.count_param_instances(obj.__dict__)
+
+        return count
