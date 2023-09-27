@@ -2,11 +2,11 @@
 
 ## Overview
 
-Repository for my masters thesis that studies and implements stochastic variational inference for semiparametric distributional regression models. Variational inference is a method to approximate a posterior distribution using a simpler variational distribution. This inference approach allows to learn a posterior distribution with optimization instead of sampling. The thesis studies a "black-box" variational inference algorithm that can be applied to wide variety of models. The thesis aims to study properties of the algorithm for Bayesian GAMLSS models.
+Repository for my masters thesis that studies stochastic variational inference for semiparametric distributional regression models. Variational inference is a inference approach that approximates a posterior distribution using a simpler variational distribution. This inference technique allows to learn a posterior distribution with optimization instead of sampling. The thesis studies a "black-box" variational inference algorithm that can be applied to a wide variety of hierarchical Bayesian regression models.
 
 The directory tigerpy includes python code of the masters thesis that is loosely written in a package style. The python package is called tigerpy and allows for Bayesian inference in distributional regression models that can also contain smooth additive effects (via the B-spline basis). Flexible regression specifications are enabled by its directed graph structure. The package [`networkx`](https://networkx.org/documentation/stable/index.html#) is used for efficient directed graph construction. Moreover makes the package use of [`jax`](https://jax.readthedocs.io/en/latest/index.html) for high-performance array computing and automatic differentiation.
 
-The master thesis is written in [`quarto`](https://quarto.org/) and is fully contained in the thesis directory. Child chapters contained in the chapters directory are all imported into the master file `thesis_paper.qmd`.
+The master thesis is written in [`quarto`](https://quarto.org/) and is fully contained in the thesis directory. Child chapters contained in the chapters directory are all imported into the master file `thesis_paper.qmd` and knitted there.
 
 A simulation study is contained in the simulation directory. While the playground directory contains `.ipynb` files that apply the inference algorithm to different models. Additionally some figures for the thesis are generated in the notebook `plots_paper.ipynb`.
 
