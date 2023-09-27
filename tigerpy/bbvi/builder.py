@@ -184,13 +184,13 @@ class Bbvi:
     def run_bbvi(self,
                  step_size: Union[Any, float] = 0.01,
                  threshold: float = 1e-2,
-                 key: int = 1,
+                 key_int: int = 1,
                  batch_size: int = 32,
                  num_var_samples: int = 64,
                  chunk_size: int = 1,
                  epochs: int = 1000) -> tuple:
         """
-        Method to start the stochastic optimization. The implementation uses Adam.
+        Method to start the stochastic gradient optimization. The implementation uses Adam.
 
         Args:
             step_size (float, optional): Step size (learning rate) of the SGD optimizer (Adam).
@@ -198,7 +198,7 @@ class Bbvi:
             threshold (float, optional): Threshold to stop the optimization. Defaults to 1e-5.
             batch_size (int, optional): Batchsize, i.e. number of samples to use during SGD. Defaults to 32.
             num_var_samples (int, optional): Number of variational samples used for the Monte Carlo integraion. Defaults to 64.
-            key (int, optional): Integer that is used as key for PRNG. Defaults to 1.
+            key_int (int, optional): Integer that is used as key for PRNG in JAX. Defaults to 1.
             chunk_size (int, optional): Chunk sizes of to evaluate. Defaults to 1.
             epoch (int, optional): Number of times that the learning algorithm will
             work thorugh the entire data. Defaults to 1000.
@@ -225,8 +225,13 @@ class Bbvi:
 
             for i in range(self.num_obs // batch_size):
                 key, *subkey = jax.random.split(key, 3)
-                batch_idx =  rand_perm[i * batch_size : (i + 1) * batch_size]
-                state, elbo = bbvi_body(state, batch_idx, subkey)
+
+                if i != self.num_obs // batch_size:
+                    batch_idx =  rand_perm[i * batch_size : (i + 1) * batch_size]
+                    state, elbo = bbvi_body(state, batch_idx, subkey)
+                elif i == self.num_obs // batch_size:
+                    batch_idx =  rand_perm[i * batch_size : -1]
+                    state, elbo = bbvi_body(state, batch_idx, subkey)
 
             return state, elbo
 
@@ -238,7 +243,7 @@ class Bbvi:
 
             return new_state, elbo_chunk
 
-        key = jax.random.PRNGKey(key)
+        key = jax.random.PRNGKey(key_int)
 
         state = BbviState(key,
                           opt_state,

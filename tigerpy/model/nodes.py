@@ -234,7 +234,6 @@ class ModelGraph:
         else:
             log_lik = dist.log_prob(value)
 
-        # print("log_lik:", log_lik.shape)
         return log_lik
 
     # new function to collect all prior probabilities in the graph
@@ -249,9 +248,9 @@ class ModelGraph:
                 log_prior = self.digraph.nodes[node]["attr"].get("log_prior", 0.0)
 
                 # Check if really shape[1] or shape[-1]
-                if log_prior.ndim == 2 and log_prior.shape[1] == 1:
+                if log_prior.ndim == 2 and log_prior.shape[-1] == 1:
                     log_prior = jnp.squeeze(log_prior)
-                elif log_prior.ndim == 2 and log_prior.shape[1] != 1:
+                elif log_prior.ndim == 2 and log_prior.shape[-1] != 1:
                     log_prior = jnp.sum(log_prior, axis=-1)
 
                 log_prior_sum += log_prior
