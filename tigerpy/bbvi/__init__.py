@@ -1,6 +1,6 @@
 """
-BBVI related modules.
+Bbvi related modules.
 """
 
-from .. import model
-from .builder import Bbvi, BbviState
+from .bbvi_lm import Bbvi_bayes_lm
+from .bbvi_lr import Bbvi_bayes_lr

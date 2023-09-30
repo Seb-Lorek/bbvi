@@ -20,4 +20,4 @@ Multivariate degenerate gaussian prior.
 
 Centering constrains.
 
-# DAGs {#sec-dag}
+## DAGs {#sec-dag}

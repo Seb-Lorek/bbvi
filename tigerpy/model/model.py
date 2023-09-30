@@ -85,7 +85,7 @@ class Param:
 
         log_prior = self.distribution.init_dist().log_prob(value)
 
-        return jnp.sum(log_prior, keepdims=True)
+        return log_prior
 
 class Lpred:
     """
@@ -173,7 +173,7 @@ class Model:
 
         log_prior = jnp.concatenate(prior_list)
 
-        return log_prior
+        return jnp.sum(log_prior)
 
     def logprob(self) -> Array:
         """

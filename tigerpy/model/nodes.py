@@ -1,12 +1,16 @@
 """
-Directed Graph.
+Directed graph.
 """
 
 import networkx as nx
 
 import jax.numpy as jnp
+
 import matplotlib.pyplot as plt
+
 import re
+
+import copy
 
 from typing import Any, Union
 
@@ -22,9 +26,11 @@ from .model import (
 )
 
 class ModelGraph:
+    """Class to build a DAG."""
+
     def __init__(self, model: Model):
         self.digraph = nx.DiGraph()
-        self.model = model
+        self.model = copy.deepcopy(model)
         self.traversal_order = None
         self.update_traversal_order = []
         self.prob_traversal_order = []
@@ -139,7 +145,7 @@ class ModelGraph:
 
     def init_update_traversal(self) -> None:
         """
-        Method to filter out all probabilistic nodes and linear predictor nodes from the traversal order.
+        Method to filter out all probabilistic and linear predictor nodes from the traversal order.
         """
 
         for node in self.traversal_order:
@@ -177,7 +183,7 @@ class ModelGraph:
             design_matrix = self.digraph.nodes[node]["input"]["fixed"][batch_idx,:]
         else:
             design_matrix = self.digraph.nodes[node]["input"]["fixed"]
-        # print("design_matrix before:", design_matrix.shape)
+        #print("design_matrix before:", design_matrix.shape)
 
         design_matrix = jnp.expand_dims(design_matrix, axis=0)
         # print("design_matrix after:", design_matrix.shape)
@@ -210,20 +216,21 @@ class ModelGraph:
             value (Array): Value of the parameter.
 
         Returns:
-            Array: Log-prior probabilities of the parameters.
+            Array: Prior log-probabilities of the parameters.
         """
 
         return dist.log_prob(value)
 
-    def loglik(self, dist: Distribution, value: Array, batch_idx: Union[Array, None] = None) -> Array:
+    def loglik(self,
+               dist: Distribution,
+               value: Array,
+               batch_idx: Union[Array, None] = None) -> Array:
         """
         Method to calculate the log-likelihood of the response (root node).
 
         Args:
             dist (Distribution): A initialized tensorflow probability distribution.
             value (Array): Values of the response.
-            batch_idx (Union[Array, None], optional): Array of indices to select a
-            subset of the observations. If None all observations are used. Defaults to None.
 
         Returns:
             Array: Log-likelihood of the response.
@@ -236,7 +243,7 @@ class ModelGraph:
 
         return log_lik
 
-    # new function to collect all prior probabilities in the graph
+    # function used in `builder.py` to collect log-priors
     def collect_logpriors(self, num_samples: int = 1) -> Array:
 
         log_prior_sum = jnp.zeros((num_samples,), dtype=jnp.float32)
@@ -247,7 +254,6 @@ class ModelGraph:
             if node_type == "strong":
                 log_prior = self.digraph.nodes[node]["attr"].get("log_prior", 0.0)
 
-                # Check if really shape[1] or shape[-1]
                 if log_prior.ndim == 2 and log_prior.shape[-1] == 1:
                     log_prior = jnp.squeeze(log_prior)
                 elif log_prior.ndim == 2 and log_prior.shape[-1] != 1:
@@ -256,6 +262,26 @@ class ModelGraph:
                 log_prior_sum += log_prior
 
         return log_prior_sum
+
+    def logprob(self) -> Array:
+        """
+        Method to calculate the log-probability of the DAG.
+        """
+
+        log_prob = jnp.array([0.0], dtype=jnp.float32)
+
+        for node in self.prob_traversal_order:
+            node_type = self.digraph.nodes[node]["node_type"]
+            if node_type == "strong":
+                log_prior = self.digraph.nodes[node]["attr"].get("log_prior", 0.0)
+                log_prior = jnp.sum(log_prior, axis=-1)
+                log_prob += log_prior
+            elif node_type == "root":
+                log_lik = self.digraph.nodes[node]["attr"].get("log_lik", 0.0)
+                log_lik = jnp.sum(log_lik)
+                log_prob += log_lik
+
+        return log_prob
 
     def build_graph_recursive(self,
                               obj: Any,
@@ -417,8 +443,10 @@ class ModelGraph:
 
         self.params = params
 
-    # check how to improve this function
-    def update_graph(self, samples: dict, batch_idx: Union[Array, None] = None) -> None:
+        # check how to improve this function
+    def update_graph(self,
+                     samples: dict,
+                     batch_idx: Union[Array, None] = None) -> None:
         """
         Method to update the graph with samples from the variational distribution.
 
