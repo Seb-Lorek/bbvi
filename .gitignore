@@ -1,0 +1,20 @@
+# MacOS
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ignore data directory
+data
+
+# ignore the Byte-compiled files
+__pycache__/
+
+# ignore notes directory
+notes
+
+# ignore test.py
+playground/test.py
+
+# ignore directory legacy
+legacy

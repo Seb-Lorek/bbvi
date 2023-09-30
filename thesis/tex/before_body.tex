@@ -1,0 +1,102 @@
+% --- Coverpage ---%
+\thispagestyle{empty}
+\topskip0pt
+
+% Vertical centering (start)
+\vspace*{\fill}
+
+% University logo
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.5\textwidth]{img/logo_uni_goe.pdf}
+\end{figure}
+
+\bigskip
+
+\begin{center}
+
+% Title
+\rule{\linewidth}{0.5mm}
+
+{\Large \textbf{A Stochastic Variational Inference Approach for Semiparametric
+                Distributional Regression}}
+
+\rule{\linewidth}{0.5mm} \\
+
+\end{center}
+
+\bigskip
+
+% Author
+\begin{center}
+
+by \\
+
+\bigskip
+
+Lorek, Sebastian \\
+Matriculation number: 20311558
+
+\end{center}
+
+\bigskip
+
+% Degree
+\begin{center}
+
+A Master's Thesis \\
+Submitted to the Chair of Statistics \\
+Faculty of Business and Economics, University of Göttingen \\
+In Fulfillment of the Requirements \\
+For a Master's Degree in Applied Statistics\\
+First Supervisor: Prof. Dr. Kneib \\
+Second Supervisor: Mr. Callegher \\
+December, 2023 \\
+
+\end{center}
+
+
+% Vertical centering (end)
+\vspace*{\fill}
+
+% For TOC etc. already
+\clearpage
+\pagenumbering{Roman}
+
+% --- Abstract --- %
+
+\section*{Abstract}
+
+The thesis first provides an introduction into variational inference as an alternative
+inference tool in Bayesian inference problemes, which allows for approximation of the posterior distribution.
+Moreover are the properties of stochastic variational inference for Bayesian GAMLSS models analyized.
+Showing that using a black-box variational inference inference algorithm results in
+consistent parameter estimates, using the mean field family, for a variety of common models.
+Furthermore is variational inference compared to common MCMC sampling algorithms. The algorithm is implemented in \verb|python|
+using \verb|JAX| as a numerical computing library and for usage of automatic differentiation.
+Moreover are the models constructed using graph theory via the \verb|networkx| package.
+
+\clearpage
+
+% --- TOC --- %
+\tableofcontents
+\clearpage
+
+% --- LOF --- %
+\listoffigures
+
+% --- LOT --- %
+\listoftables
+
+% --- List of abbreviations --- %
+\section*{List of Abbreviations}
+
+\begin{tabular}{@{} l @{\hskip 1in} l}
+  VI & Variational inference \\
+  SVI & Stochastic variational inference \\
+  MCMC & Markov chain Monte Carlo \\
+  KL & Kullback-Leibler \\
+  GAMLSS & Generalized additive models for location, scale and shape \\
+  CAVI & Coordinate ascent variational inference \\
+  SGD & Stochastic gradient descent \\
+\end{tabular}

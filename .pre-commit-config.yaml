@@ -1,0 +1,12 @@
+# see https://pre-commit.com for more information
+# see https://pre-commit.com/hooks.html for more hooks
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.3.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace

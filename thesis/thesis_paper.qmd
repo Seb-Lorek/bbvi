@@ -1,0 +1,69 @@
+---
+format:
+    pdf:
+        pdf-engine: pdflatex
+        documentclass: scrartcl
+        toc: false
+        toc-depth: 2
+        number-sections: true
+        toccolor: black
+        citecolor: blue
+        linkcolor: black
+        fig-pos: "htbp"
+        fontsize: 12pt
+        include-in-header: "tex/preamble.tex"
+        include-before-body: "tex/before_body.tex"
+        cite-method: biblatex
+        biblatexoptions:
+        - backend=biber
+        - maxbibnames=999
+        - maxcitenames=2
+        - uniquename=false
+        - uniquelist=false
+        - dashed=false
+        - isbn=false
+        - doi=false
+        - eprint=false
+        biblio-style: authoryear-icomp
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+execute:
+  echo: false
+  warning: false
+  output: true
+crossref:
+  eq-prefix: ""
+---
+
+\newpage
+\pagenumbering{arabic}
+
+{{< include chapters/_01-intro.qmd >}}
+
+{{< include chapters/_02-vinf.qmd >}}
+
+{{< include chapters/_03-svinf.qmd >}}
+
+{{< include chapters/_04-models.qmd >}}
+
+{{< include chapters/_05-app.qmd >}}
+
+{{< include chapters/_06-simulation.qmd >}}
+
+{{< include chapters/_07-conlusion.qmd >}}
+
+\newpage
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
+
+\newpage
+\appendix
+
+{{< include chapters/_99-appendix.qmd >}}
+
+\newpage
+\thispagestyle{empty}
+
+{{< include chapters/_100-affidavit.qmd >}}

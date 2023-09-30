@@ -1,0 +1,37 @@
+---
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+---
+
+# Introduction {#sec-intro}
+
+<!-- Start with a nice introduction -->
+
+The task of statistical inference entails drawing conclusions about the underlying population from a sample, within the framework of a statistical model whose parameters need to be estimated. While frequentist inference has traditionally dominated the field of statistical inference, Bayesian inference has gained significant traction, even within the realm of machine learning, in recent years. The focal point of interest in Bayesian inference lies within the posterior distribution, which encompasses all relevant information about the parameters of a statistical model, treating them as random variables. Following the tradition of Bayes' theorem, the posterior represents the conditional distribution of the parameters given the data. The primary objective of Bayesian inference algorithms is to infer this posterior distribution to reason about the model parameters and, potentially, utilize it for predictive purposes or the task of model choice.
+
+ It is widely recognized that the primary challenge in obtaining this posterior distribution is the calculation of the normalizing constant, also referred to as the evidence, for models that are non-conjugate [@Held2014, p. 247, Chap. 8]. This evidence typically involves a high-dimensional integral, which poses computational inefficiencies in terms of solvability. Thus approximate Bayesian inference algorithms have to be utilized to infere the posterior distribution. While a range of Bayesian inference algorithms attempt to bypass the direct calculation of the normalizing constant, variational inference (VI) has emerged as a prominent procedure, drawing increasing attention [@Zhang2017].
+
+<!-- Some literature background on VI and gentle introduction -->
+
+VI originally emerged from the field of machine learning as a technique to approximate probability densities [@Jordan1999]. However, its sphere of application has significantly expanded over the years. Today, VI is also widely employed in Bayesian models to approximate posterior distributions that are challenging to compute. For a comprehensive exploration of VI with some exemplary Bayesian models within a literature review, consult @Blei2017. Nevertheless, it's important to emphasize that VI also has significant applications in frequentist inference.
+
+VI's theoretical properties are still not as thoroughly explored as those of traditional Bayesian inference techniques, such as Markov Chain Monte Carlo (MCMC) [@Blei2017, p. 2]. The fundamental concept behind MCMC involves establishing a Markov chain that adheres to detailed balance and ergodicity principles. This ensures that the distribution of the samples derived from the chain will ultimately converge to the posterior distribution, the stationary distribution of the Markov chain, over extended iterations [@Metropolis1953; @Hastings1970; @Robert2004]. In stark contrast, the approach in VI revolves around approximating the posterior using a pre-defined variational distribution family $\mathcal{D}$. This family is optimized with the aim of locating a member that aligns the variational distribution $q$ as closely as possible with the posterior distribution. This degree of closeness is typically quantified through the Kullback-Leibler (KL) divergence. The KL divergence is a distance measure used to quantify the proximity between two probability distributions [@Kullback1951]. Hence, our usual objective in VI is to minimize this distance measure w.r.t. $q$.
+
+This distinction already underscores the most significant contrast between MCMC and VI methods. The former employs sampling and possesses the property of converging towards the exact posterior distribution through repeated sampling. In contrast, the latter relies on optimizing a criterion, which will be extensively explored in @sec-vinf. It solely aims to closely approximate the posterior, in terms of the KL divergence, with a simpler variational distribution. The flexibility of the predefined variational family $\mathcal{D}$ significantly influences the accuracy of the posterior approximation. The greater the constraints imposed on $\mathcal{D}$, the less accurate the optimized member $q^{*}$ from this family will be. On the contrary, the utilization of a simpler variational family, allows for faster optimization. The enhacement of VI in terms of computational efficiency and scalability compared to MCMC, particularly when dealing with extensive dataset and complex models, is a major reason why VI is today employed for a wide variety of probabilistic models [@Blei2017, pp. 2].
+
+It's important to note that VI finds common application in probabilistic models featuring latent variables (parameters). These latent parameters must be inferred alongside the global parameters. Latent parameters represent observation-specific parameters that capture localized unobserved effects. In statistical terms, such models are referred to as mixed-effect models. Global parameters, on the other hand, remain consistent across individuals, resembling f.e. regression parameters [@Blei2017, pp. 18].
+
+<!-- Information on my thesis -->
+
+...
+
+TBD: This thesis explores black-box variational inference proposed in @Ranganath2014, in combination with the reparamterization gradient estimator [REF]. The variational family $\mathcal{D}$ will mainly be restricted to the mean-field family. But some extensions accounting for dependencies between parameters will be considered. The model class of interest are Bayesian generalized additive models for location, scale and shape (GAMLSS) [@Rigby2005]. These models are widely employed in classical statistics and cover a wide range of regression models. Relating not only the location of the response to the covariates, but potentially also further moments.
+
+<!-- Information on packages and technology -->
+
+TBD: Technology wise are the models build using probabilistic graphical models i.e. directed acyclic graphs (DAG), allowing for flexible model building. Probabilistic graphical models give us a visual language for expressing assumptions about data and its hidden structure. The corresponding inference algorithms let us analyze data under those assumptinos, inferring the hidden structure that best explains our observations [@Hoffman2012].
+
+<!-- Structure of the thesis -->
+
+TBD: The structure of the Thesis. @sec-vinf introduces the theory of VI using a simple Bayesian regression model. The model is chosen since it should be widely known among practioners and is straightforward. After that in @sec-svinf the framework of VI is extended to stochastic variational inference (SVI), which makes the inference algorithm more flexible. The model class that will be studied in this thesis is introduced in @sec-gamlss, where GAMLSS will be introduced.
+
+...

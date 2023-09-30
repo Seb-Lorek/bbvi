@@ -1,0 +1,61 @@
+---
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+---
+
+# Appendices {.unnumbered}
+
+\renewcommand{\thesubsection}{\Alph{subsection}}
+\addtocontents{toc}{\protect\setcounter{tocdepth}{1}}
+
+## Robbins–Monro algorithm {#sec-r-m-algo}
+
+The sequence of step sizes $\rho_{t}$ must satisfy
+
+$$
+\begin{split}
+    \sum_{t=1}^{\infty} \rho_{t} = \infty \\
+    \sum_{t=1}^{\infty} \rho_{t}^{2} < \infty
+\end{split}
+$$
+
+such that $\phivec_{t}$ will converge to the optimal $\hat{\phivec}$ either local or global depeding if the objective function is non-convex or convex [@Robbins1951]. Since the ELBO is a non-convex function we will converge to a local optimum. To find a local optimum, the ELBO must be three-times differentiable and must meet a few mild technical requirements (Bootou, 1998). The variational objective satisfies these criteria [@Hoffman2012, p.1318]. These conditions guarantee that every in the parameter space can be reached, while gradient noise decreases quickly enough to ensure convergence [@Zhang2017, p. 5].
+
+## Score gradient estimator {#sec-deriv-score-grd}
+
+The following derivation shows how to derive the score gradient estimator from @Ranganath2014. In the last step we can use Monte Carlo integration to approximate the derivate.
+
+$$
+\begin{split}
+    \nabla_{\phivec}\text{ELBO}(\phivec) &= \nabla_{\phivec} \int q(\thetavec | \phivec) \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \,d \thetavec \\
+    &= \int (\nabla_{\phivec} q(\thetavec | \phivec)) \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \,d \thetavec + \int q(\thetavec | \phivec) \left( \nabla_{\phivec}\ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \right) \,d \thetavec \\
+    &= \int (\nabla_{\phivec} q(\thetavec | \phivec)) \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \,d \thetavec - \int q(\thetavec | \phivec) (\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \,d \thetavec \\
+    &= \int q(\thetavec | \phivec) \frac{(\nabla_{\phivec} q(\thetavec | \phivec))}{q(\thetavec | \phivec)} \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \,d \thetavec - \int q(\thetavec | \phivec) \frac{(\nabla_{\phivec} q(\thetavec | \phivec))}{q(\thetavec | \phivec)} \,d \thetavec \\
+    &= \int q(\thetavec | \phivec) (\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \,d \thetavec - \int \nabla_{\phivec} q(\thetavec | \phivec) \,d \thetavec \\
+    &= \int q(\thetavec | \phivec) (\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \,d \thetavec - \nabla_{\phivec} \int q(\thetavec | \phivec) \,d \thetavec \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ (\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \ln \left[ \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right] \right]\\
+    &\approx \frac{1}{S} \sum_{s=1}^{S} (\nabla_{\phivec} \ln [q(\thetavec | \phivec)]) \Bigr\rvert_{\thetavec = \thetavec^{s}} \ln \left[ \frac{p(\yvec, \thetavec^{s} | \X)}{q(\thetavec^{s} | \phivec)} \right], \; \thetavec^{s} \sim q(\thetavec | \phivec).
+\end{split}
+$$
+
+### Control Variates {#sec-contr-var}
+
+Because
+
+$$
+\int q(\thetavec | \phivec) \nabla_{\phivec} \ln q(\thetavec | \phivec) \,d \thetavec = 0,
+$$
+
+we can add/subtract any multiple $C$ of this expression to the score gradient estimator (gradient of the ELBO w.r.t. $\phivec$).
+
+$$
+\begin{split}
+    \nabla_{\phivec} \text{ELBO}(\thetavec | \phivec) &= \text{E}_{q(\thetavec | \phivec)} \left[ \nabla_{\phivec} \ln q(\thetavec | \phivec) \left( \ln \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} - C \right) \right] \\
+    &\approx \frac{1}{S} \sum_{s=1}^{S} \nabla_{\phivec} \ln q(\thetavec_{s} | \phivec) \left( \ln \frac{p(\yvec, \thetavec_{s} | \X)}{q(\thetavec_{s} | \phivec)} - C \right), \; \thetavec_{s} \sim q(\thetavec | \phivec).
+\end{split}
+$$
+
+Idea is that we can reduce the variance without changing the expectation value. The $C$ is defined as
+
+$$
+C = \frac{1}{S} \sum_{s=1}^{S} \ln \frac{p(\yvec, \thetavec_{s} | \X)}{q(\thetavec_{s} | \phivec)}.
+$$

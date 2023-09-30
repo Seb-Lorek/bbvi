@@ -1,0 +1,23 @@
+---
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+---
+
+# Probabilistic modelling {#sec-prob-m}
+
+## GAMLSS models {#sec-gamlss}
+
+Theory on GAMLSS models.
+
+Introduce GAMLSS models.
+
+Hierarchical Bayesian models.
+
+Smooth Terms.
+
+B-spline Basis.
+
+Multivariate degenerate gaussian prior.
+
+Centering constrains.
+
+## DAGs {#sec-dag}

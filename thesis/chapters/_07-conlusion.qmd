@@ -1,0 +1,7 @@
+---
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+---
+
+# Conclusion {#sec-conc}
+
+The thesis didn't find anything new.

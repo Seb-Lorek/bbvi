@@ -1,0 +1,5 @@
+# Ignore PDFs
+*.pdf
+
+# Ignore Log files
+*.log
