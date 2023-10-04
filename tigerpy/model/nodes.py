@@ -30,7 +30,7 @@ class ModelGraph:
 
     def __init__(self, model: Model):
         self.digraph = nx.DiGraph()
-        self.model = copy.deepcopy(model)
+        self.model = model
         self.traversal_order = None
         self.update_traversal_order = []
         self.prob_traversal_order = []
@@ -41,7 +41,7 @@ class ModelGraph:
         """
 
         attr = {"value": self.model.response,
-                "dim": self.model.response.shape[0],
+                "dim": self.model.num_obs,
                 "dist": self.model.response_dist.get_dist(),
                 "log_lik": self.model.log_lik}
         self.digraph.add_node("response", attr=attr)
@@ -113,7 +113,7 @@ class ModelGraph:
     def init_dist(self,
                   dist: Distribution,
                   params: dict,
-                  additional_params: Union[dict, None] = None) -> Distribution:
+                  additional_params: Union[dict, None]=None) -> Distribution:
         """
         Method to initialize the probability distribution of a strong node (node with a probability distribution).
 
@@ -159,46 +159,27 @@ class ModelGraph:
         """
 
         for node in self.traversal_order:
-            node_type = self.digraph.nodes[node].get("node_type")
+            node_type = self.digraph.nodes[node]["node_type"]
             if node_type in ["strong", "root"]:
                 self.prob_traversal_order.append(node)
 
-    def update_lpred(self, node: str, attr: dict, batch_idx: Union[Array, None] = None) -> Array:
+    def update_lpred(self, node: str, attr: dict) -> Array:
         """
         Method to calculate the value of a linear predictor node.
 
         Args:
             node (str):  Name of the linear predictor node.
             attr (dict): Attributes of the node.
-            batch_idx (Union[Array, None], optional): Array of indices to select a
-            subset of the observations. If None all observations are used. Defaults to None.
 
         Returns:
             Array: Values for the linear predictor after applying the bijector (inverse link function).
         """
 
         bijector = attr["bijector"]
-
-        if batch_idx is not None:
-            design_matrix = self.digraph.nodes[node]["input"]["fixed"][batch_idx,:]
-        else:
-            design_matrix = self.digraph.nodes[node]["input"]["fixed"]
-        #print("design_matrix before:", design_matrix.shape)
-
-        design_matrix = jnp.expand_dims(design_matrix, axis=0)
-        # print("design_matrix after:", design_matrix.shape)
-
+        design_matrix = self.digraph.nodes[node]["input"]["fixed"]
         input_pass = self.digraph.nodes[node]["input"]
-
         values_params = jnp.concatenate([item for key, item in input_pass.items() if key != "fixed"], axis=-1)
-        values_params = jnp.expand_dims(values_params, -1)
-        # print("Reg coef before:", values_params.shape)
-
-        nu = jnp.matmul(design_matrix, values_params)
-        # print("nu before:", nu.shape)
-
-        nu = jnp.squeeze(nu)
-        # print("nu after:", nu.shape)
+        nu = jnp.dot(design_matrix, values_params)
 
         if bijector is not None:
             transformed = bijector(nu)
@@ -223,8 +204,7 @@ class ModelGraph:
 
     def loglik(self,
                dist: Distribution,
-               value: Array,
-               batch_idx: Union[Array, None] = None) -> Array:
+               value: Array) -> Array:
         """
         Method to calculate the log-likelihood of the response (root node).
 
@@ -236,29 +216,25 @@ class ModelGraph:
             Array: Log-likelihood of the response.
         """
 
-        if batch_idx is not None:
-            log_lik = dist.log_prob(value[batch_idx])
-        else:
-            log_lik = dist.log_prob(value)
+        return dist.log_prob(value)
 
-        return log_lik
+    def collect_logpriors(self) -> Array:
+        """
+        Method to sum all the prior log-probabilities of the DAG, i.e. collect them 
+        from the strong nodes.
 
-    # function used in `builder.py` to collect log-priors
-    def collect_logpriors(self, num_samples: int = 1) -> Array:
+        Returns:
+            Array: The sum of all prior log-probabilities.
+        """
 
-        log_prior_sum = jnp.zeros((num_samples,), dtype=jnp.float32)
+        log_prior_sum = jnp.array(0.0, dtype=jnp.float32)
 
         for node in self.prob_traversal_order:
             node_type = self.digraph.nodes[node]["node_type"]
 
             if node_type == "strong":
                 log_prior = self.digraph.nodes[node]["attr"].get("log_prior", 0.0)
-
-                if log_prior.ndim == 2 and log_prior.shape[-1] == 1:
-                    log_prior = jnp.squeeze(log_prior)
-                elif log_prior.ndim == 2 and log_prior.shape[-1] != 1:
-                    log_prior = jnp.sum(log_prior, axis=-1)
-
+                log_prior = jnp.sum(log_prior)
                 log_prior_sum += log_prior
 
         return log_prior_sum
@@ -268,13 +244,13 @@ class ModelGraph:
         Method to calculate the log-probability of the DAG.
         """
 
-        log_prob = jnp.array([0.0], dtype=jnp.float32)
+        log_prob = jnp.array(0.0, dtype=jnp.float32)
 
         for node in self.prob_traversal_order:
             node_type = self.digraph.nodes[node]["node_type"]
             if node_type == "strong":
                 log_prior = self.digraph.nodes[node]["attr"].get("log_prior", 0.0)
-                log_prior = jnp.sum(log_prior, axis=-1)
+                log_prior = jnp.sum(log_prior)
                 log_prob += log_prior
             elif node_type == "root":
                 log_lik = self.digraph.nodes[node]["attr"].get("log_lik", 0.0)
@@ -285,115 +261,113 @@ class ModelGraph:
 
     def build_graph_recursive(self,
                               obj: Any,
-                              parent_node: str,
-                              node_name: str,
+                              child_node: str,
+                              param_name: str,
                               params: dict) -> None:
         """
-        Method to build the DAG recursively. Calls methods add_* to create the
-        different node types.
+        Method to build the DAG recursively. Calls methods add_*() to create the
+        different node types. Note that add_root() is called outside to define the root
+        of the DAG.
 
         Args:
             obj (Any): Classes of `model.py` i.e. Hyper, Param, Lpred.
-            parent_node (str): Name of the parent node.
-            node_name (str): Name of the current node.
+            child_node (str): Name of the child node.
+            param_name (str): Name of the current node/Parameter name in a distribution.
             params (dict): Dictionary that gets filled with the initial supplied
             values.
         """
 
         if isinstance(obj, Lpred):
-            # Lpred case
+            node_name = param_name
             self.add_lpred_node(name=node_name, lpred=obj)
-            self.digraph.add_edge(node_name, parent_node, role=node_name,
+            self.digraph.add_edge(node_name, child_node, role=param_name,
                                   bijector=obj.function)
             name_fixed = obj.obs.name
             self.add_fixed_node(name=name_fixed, obs=obj.obs)
             self.digraph.add_edge(name_fixed, node_name, role="fixed")
 
         elif isinstance(obj, Param):
-            # Param case
-            name_param = obj.name
-            self.add_strong_node(name=name_param, param=obj)
-            self.digraph.add_edge(name_param, parent_node, role=node_name)
-            node_name = name_param
-            params[name_param] = obj.value
+            node_name = obj.name
+            self.add_strong_node(name=node_name, param=obj)
+            self.digraph.add_edge(node_name, child_node, role=param_name)
+            params[node_name] = obj.value
+            param_name = node_name
 
         elif isinstance(obj, Hyper):
-            # Hyper case
-            name_hyper = obj.name
-            self.add_hyper_node(name=name_hyper, hyper=obj)
-            self.digraph.add_edge(name_hyper, parent_node, role=node_name)
+            node_name = obj.name
+            self.add_hyper_node(name=node_name, hyper=obj)
+            self.digraph.add_edge(node_name, child_node, role=param_name)
+            param_name = node_name
 
         if isinstance(obj, (list, tuple)):
             for item in obj:
                 self.build_graph_recursive(obj=item,
-                                           parent_node=parent_node,
-                                           node_name=node_name,
+                                           child_node=child_node,
+                                           param_name=param_name,
                                            params=params)
 
         if isinstance(obj, dict):
             for key, value in obj.items():
                 self.build_graph_recursive(obj=value,
-                                           parent_node=node_name,
-                                           node_name=key,
+                                           child_node=param_name,
+                                           param_name=key,
                                            params=params)
 
         elif hasattr(obj, "__dict__"):
             for value in obj.__dict__.values():
                 self.build_graph_recursive(obj=value,
-                                           parent_node=parent_node,
-                                           node_name=node_name,
+                                           child_node=child_node,
+                                           param_name=param_name,
                                            params=params)
 
-    def init_graph(self, sample: dict) -> None:
+    def init_graph(self, params: dict) -> None:
         """
         Method to initialize the DAG.
 
         Args:
-            sample (dict): Samples from the variational distribution for
-            the params in the model.
+            params (dict): Dictionary with the initial supplied values for the parameters 
+            to initialize the DAG.
         """
 
         # Use the topological sort algorithm
         for node in self.traversal_order:
             node_type = self.digraph.nodes[node]["node_type"]
             attr = self.digraph.nodes[node]["attr"]
-            successors = list(self.digraph.successors(node))
+            childs = list(self.digraph.successors(node))
 
-            # ToDo: There could also be several successors for a node?
-            # F.e. a parameter that couples two parameters ?
-            if successors:
+            # Currently Graph structure only allows for one sucessor.
+            if childs:
                 # Select first successor and neglect all other
-                successor = successors[0]
+                child = childs[0]
 
             if node_type == "hyper":
                 input_pass = attr["value"]
 
-                edge = self.digraph.get_edge_data(node, successor)
-                self.digraph.nodes[successor]["input"][edge["role"]] = input_pass
+                edge = self.digraph.get_edge_data(node, child)
+                self.digraph.nodes[child]["input"][edge["role"]] = input_pass
 
             elif node_type == "fixed":
                 input_pass = attr["value"]
 
-                edge = self.digraph.get_edge_data(node, successor)
-                self.digraph.nodes[successor]["input"][edge["role"]] = input_pass
+                edge = self.digraph.get_edge_data(node, child)
+                self.digraph.nodes[child]["input"][edge["role"]] = input_pass
 
             elif node_type == "lpred":
                 attr["value"] = self.update_lpred(node, attr)
                 input_pass = attr["value"]
 
-                edge = self.digraph.get_edge_data(node, successor)
-                self.digraph.nodes[successor]["input"][edge["role"]] = input_pass
+                edge = self.digraph.get_edge_data(node, child)
+                self.digraph.nodes[child]["input"][edge["role"]] = input_pass
 
             elif node_type == "strong":
-                attr["value"] = sample[node]
+                attr["value"] = params[node]
 
-                for predecessor in self.digraph.predecessors(node):
-                    if self.digraph.nodes[predecessor]["node_type"] not in ["hyper", "fixed"]:
+                for parent in self.digraph.predecessors(node):
+                    if self.digraph.nodes[parent]["node_type"] not in ["hyper", "fixed"]:
                         self.digraph.nodes[node]["input_fixed"] = False
                         break
 
-                # If all inputs are fixed we need to initialize the probabiltiy
-                # distribution only onces.
+                # If all inputs are fixed we need to initialize the probabiltiy distribution only onces.
                 if self.digraph.nodes[node]["input_fixed"]:
                     attr["dist"] = self.init_dist(dist=attr["dist"],
                                                   params=self.digraph.nodes[node]["input"],
@@ -405,8 +379,8 @@ class ModelGraph:
                     attr["log_prior"] = self.logprior(init_dist, attr["value"])
 
                 input_pass = attr["value"]
-                edge = self.digraph.get_edge_data(node, successor)
-                self.digraph.nodes[successor]["input"][edge["role"]] = input_pass
+                edge = self.digraph.get_edge_data(node, child)
+                self.digraph.nodes[child]["input"][edge["role"]] = input_pass
 
             elif node_type == "root":
                 init_dist = self.init_dist(attr["dist"], self.digraph.nodes[node]["input"])
@@ -423,10 +397,10 @@ class ModelGraph:
         # Initialize the root of the graph
         self.add_root()
 
-        # Build graph by searching recursively through the classes
+        # Build DAG by searching recursively through the classes
         self.build_graph_recursive(obj=self.model.response_dist,
-                                   parent_node="response",
-                                   node_name="response",
+                                   child_node="response",
+                                   param_name="response",
                                    params=params)
 
         # Obtain the traversal order for the initialization of the graph
@@ -442,53 +416,6 @@ class ModelGraph:
         self.init_graph(params)
 
         self.params = params
-
-        # check how to improve this function
-    def update_graph(self,
-                     samples: dict,
-                     batch_idx: Union[Array, None] = None) -> None:
-        """
-        Method to update the graph with samples from the variational distribution.
-
-        Args:
-            samples (dict): Dictionary containing the samples from the variational
-            distribution.
-            batch_idx (Union[Array, None], optional): Array of indices to select a
-            subset of the observations. If None all observations are used. Defaults to None.
-        """
-
-        for node in self.update_traversal_order:
-            node_type = self.digraph.nodes[node]["node_type"]
-            attr = self.digraph.nodes[node]["attr"]
-            successors = list(self.digraph.successors(node))
-
-            # Question there could also be several sucessors for a node?
-            if successors:
-                successor = successors[0]
-
-            if node_type == "lpred":
-                attr["value"] = self.update_lpred(node, attr, batch_idx)
-
-                edge = self.digraph.get_edge_data(node, successor)
-                self.digraph.nodes[successor]["input"][edge["role"]] = attr["value"]
-
-            elif node_type == "strong":
-                attr["value"] = samples[node]
-                if self.digraph.nodes[node]["input_fixed"]:
-                    attr["log_prior"] = self.logprior(attr["dist"], attr["value"])
-                else:
-                    init_dist = self.init_dist(dist=attr["dist"],
-                                               params=self.digraph.nodes[node]["input"],
-                                               additional_params=attr["additional_params"])
-                    attr["log_prior"] = self.logprior(init_dist, attr["value"])
-
-                edge = self.digraph.get_edge_data(node, successor)
-                self.digraph.nodes[successor]["input"][edge["role"]] = attr["value"]
-
-            elif node_type == "root":
-                init_dist = self.init_dist(dist=attr["dist"],
-                                           params=self.digraph.nodes[node]["input"])
-                attr["log_lik"] = self.loglik(init_dist, attr["value"], batch_idx)
 
     def visualize_graph(self) -> None:
         """

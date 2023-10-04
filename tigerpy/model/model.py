@@ -19,7 +19,7 @@ class Hyper:
     Hyperparameter.
     """
 
-    def __init__(self, value: Array, name: str = ""):
+    def __init__(self, value: Array, name: str=""):
         self.value = jnp.asarray(value)
         self.name = name
 
@@ -39,7 +39,8 @@ class Dist:
 
     def init_dist(self) -> Distribution:
         """
-        Method to initialize class Dist with kwinputs.value.
+        Method to initialize the probability distribution of class Dist with kwinputs.value 
+        or the additional_params.
 
         Returns:
             Distribution: A initialized tensorflow probability distribution.
@@ -64,7 +65,7 @@ class Param:
     Parameter.
     """
 
-    def __init__(self, value: Array, distribution: Dist, param_space: Union[str, None] = None, name: str = ""):
+    def __init__(self, value: Array, distribution: Dist, param_space: Union[str, None]=None, name: str=""):
         self.value = jnp.atleast_1d(value)
         self.distribution = distribution
         self.param_space = param_space
@@ -92,7 +93,7 @@ class Lpred:
     Linear predictor.
     """
 
-    def __init__(self, obs: Obs, function: Any = None, **kwinputs: Any):
+    def __init__(self, obs: Obs, function: Any=None, **kwinputs: Any):
         self.obs = obs
         self.function = function
         self.kwinputs = kwinputs
@@ -183,7 +184,7 @@ class Model:
             Array: Log-probability of the model.
         """
 
-        return jnp.sum(self.log_lik) + jnp.sum(self.log_prior)
+        return jnp.sum(self.log_lik) + self.log_prior
 
     def return_param_logpriors(self, obj: Any) -> list:
         """
