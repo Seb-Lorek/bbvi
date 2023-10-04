@@ -171,9 +171,8 @@ class Model:
         """
 
         prior_list = self.return_param_logpriors(self.response_dist)
-
         log_prior = jnp.concatenate(prior_list)
-
+        
         return jnp.sum(log_prior)
 
     def logprob(self) -> Array:
@@ -203,7 +202,7 @@ class Model:
         if isinstance(obj, Param):
             log_priors.append(obj.log_prior)
 
-        elif isinstance(obj, (list, tuple)):
+        if isinstance(obj, (list, tuple)):
             for item in obj:
                 log_priors.extend(self.return_param_logpriors(item))
 

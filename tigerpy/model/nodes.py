@@ -234,10 +234,9 @@ class ModelGraph:
 
             if node_type == "strong":
                 log_prior = self.digraph.nodes[node]["attr"].get("log_prior", 0.0)
-                log_prior = jnp.sum(log_prior)
                 log_prior_sum += log_prior
 
-        return log_prior_sum
+        return jnp.squeeze(log_prior_sum)
 
     def logprob(self) -> Array:
         """

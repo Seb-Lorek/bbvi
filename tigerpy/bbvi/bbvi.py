@@ -78,16 +78,17 @@ class Bbvi:
         self.digraph = self.graph.digraph
         self.model = self.graph.model
         self.num_obs = self.model.num_obs
-
         self.data = {}
-
         self.init_variational_params = {}
         self.variational_params = {}
+        self.num_var_param = None
         self.trans_variational_params = {}
         self.elbo_hist = {}
 
         self.set_data()
         self.set_variational_params()
+        # Implement method to count the number of variational parameters 
+        #self.count_var_param()
 
     def set_data(self) -> None:
         """
@@ -238,15 +239,15 @@ class Bbvi:
         return dist.log_prob(value)
 
     def mc_logprob(self, 
-                   batch_data: Dict,
-                   samples: Dict,
+                   batch_data: dict,
+                   samples: dict,
                    num_obs: int) -> Array:
         """
         Calculate the Monte Carlo integral for the joint log-probability of the model.
 
         Args:
-            samples (Dict): Samples from the variational distribution for the parameters of the model in a dictionary.
-            batch_idx (Array): Indexes of the mini-batch.
+            batch_data (dict): A subsample of the data (mini-batch).
+            samples (dict): Samples from the variational distribution.
             num_var_samples(int): Number of samples from the variational distribution.
 
         Returns:
@@ -258,6 +259,7 @@ class Bbvi:
         input = {}
 
         # Safe all log priors 
+        # Maybe explicity define shape log-priors via num_var_samples
         log_priors = jnp.array([0.0])
 
         # Acess global variables but don't modify them 
@@ -267,59 +269,53 @@ class Bbvi:
             childs = list(self.digraph.successors(node))
             parents = list(self.digraph.predecessors(node))
 
-            # Current graph structure only allows for one child
-            if childs:
-                child = childs[0]
-
             if node_type == "lpred":
                 for parent in parents:
                     edge = self.digraph.get_edge_data(parent, node)
                     if edge["role"] == "fixed":
                         design_matrix = batch_data[parent]
-                        # print("Design_matrix:", design_matrix)
+                        # print("Design_matrix:", node, design_matrix.shape)
                         parents.remove(parent)
 
                 # Obtain all parameters of the linear predictor node
+                # Be careful of the order here !!
                 params = {kw: samples[kw] for kw in parents}
                 # print(params)
                 # Calculate the linear predictor with the new samples
-                lpred = Bbvi.calc_lpred(design_matrix, 
+                lpred_val = Bbvi.calc_lpred(design_matrix, 
                                         params,
                                         attr["bijector"])
-
-                #print("Lpred:", lpred.shape)
+                # print("Lpred:", node, lpred_val.shape)
                 
-                input[node] = lpred
+                input[node] = lpred_val
             
             elif node_type == "strong":
                 if self.digraph.nodes[node]["input_fixed"]:
                     log_prior = Bbvi.logprior(attr["dist"], 
                                               samples[node])
-                    # print("Log-prior:", log_prior.shape)
-                    log_prior = jnp.sum(log_prior, axis=-1)
-                    # print("Log-prior:", log_prior.shape)
-                    log_priors += log_prior
+                    
                 else: 
-                    # Combine fixed hyperparameter with parameter that changes 
+                    # Combine fixed hyperparameter with parameter that is stochastic
                     params = {}
                     for parent in parents:
                         if self.digraph.nodes[parent]["node_type"] == "hyper":
                             edge = self.digraph.get_edge_data(parent, node)
                             params[edge["role"]] = self.digraph.nodes[node]["attr"]["value"]
+                        
                         elif self.digraph.nodes[parent]["node_type"] == "strong":
                             edge = self.digraph.get_edge_data(parent, node)
-                            params[edge["role"]] = samples[parent]
-                            # Write function that initializes the dist with new values
-                            init_dist = Bbvi.init_dist(dist=attr["dist"], 
-                                                       params=params,
-                                                       additional_params=attr["additional_params"])
-                            log_prior = Bbvi.logprior(init_dist, 
-                                                      samples[node])
-                            # print("Log-prior:", log_prior.shape)
-                            log_prior = jnp.sum(log_prior, axis=-1)
-                            # print("Log-prior:", log_prior.shape)
-                            log_priors += log_prior
-                
+                            params[edge["role"]] = input[parent]
+
+                    init_dist = Bbvi.init_dist(dist=attr["dist"], 
+                                               params=params,
+                                               additional_params=attr["additional_params"])
+                    # print(init_dist)
+                    log_prior = Bbvi.logprior(init_dist, 
+                                              samples[node])
+
+                if log_prior.ndim == 2:
+                    log_prior = jnp.sum(log_prior, axis=-1)
+                log_priors += log_prior
                 input[node] = samples[node]
 
             elif node_type == "root":
@@ -337,7 +333,9 @@ class Bbvi:
                 # calculate the scaled log-likelihood
                 scaled_log_lik = Bbvi.calc_scaled_loglik(log_lik,
                                                          num_obs)
-                # print("Scaled log-lik", scaled_log_lik.shape)
+        
+        # print("Scaled log-lik", scaled_log_lik.shape)
+        # print("Log-priors", log_priors.shape)
 
         return jnp.mean(scaled_log_lik + log_priors)
 
@@ -427,10 +425,11 @@ class Bbvi:
                 total_neg_entropy = jnp.append(total_neg_entropy, neg_entropy, axis=0)
             
             i += 1
-
+        # print(samples)
+        # print(total_neg_entropy)
         mc_log_prob = self.mc_logprob(batch_data, samples, num_obs)
         elbo = mc_log_prob - jnp.sum(total_neg_entropy)
-
+        
         return - elbo
 
     def run_bbvi(self,
@@ -495,10 +494,10 @@ class Bbvi:
             rand_perm = jax.random.permutation(subkey, num_obs)         
             # Note: batch_size is a global variable
             num_batches = num_obs // batch_size 
-            lost_obs = num_obs % num_batches
+            lost_obs = num_obs % batch_size
             cut_rand_perm = jax.lax.slice_in_dim(rand_perm, start_index=0, limit_index=-lost_obs)
             batches = jnp.split(cut_rand_perm, num_batches)
-
+            
             bbvi_state = BbviState(epoch_state.data,
                                    batches,
                                    num_obs,
