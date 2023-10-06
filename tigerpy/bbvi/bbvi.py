@@ -79,16 +79,15 @@ class Bbvi:
         self.model = self.graph.model
         self.num_obs = self.model.num_obs
         self.data = {}
-        self.init_variational_params = {}
-        self.variational_params = {}
-        self.num_var_param = None
-        self.trans_variational_params = {}
+        self.init_var_params = {}
+        self.var_params = {}
+        self.num_var_params = None
+        self.trans_var_params = {}
         self.elbo_hist = {}
 
         self.set_data()
-        self.set_variational_params()
-        # Implement method to count the number of variational parameters 
-        #self.count_var_param()
+        self.set_var_params()
+        self.count_var_params()
 
     def set_data(self) -> None:
         """
@@ -103,7 +102,7 @@ class Bbvi:
             elif node_type == "root":
                 self.data[node] = attr["value"]
 
-    def set_variational_params(self) -> None:
+    def set_var_params(self) -> None:
         """
         Method to set the internal variational parameters.
         """
@@ -112,9 +111,31 @@ class Bbvi:
             node_type = self.digraph.nodes[node]["node_type"]
             if node_type == "strong":
                 attr = self.digraph.nodes[node]["attr"]
-                self.init_variational_params[node] = self.starting_variational_params(attr)
+                param = self.get_edge_data(node)
+                self.init_var_params[node] = self.start_var_params(attr, param)
 
-    def starting_variational_params(self, attr: Any) -> Dict:
+    def get_edge_data(self, node) -> None:
+        """
+        Method to obtain the edge data of a child.
+        """
+
+        childs = list(self.digraph.successors(node))
+        if childs:
+            child = childs[0]
+            edge = self.digraph.get_edge_data(node, child)
+            param = edge["role"]
+        else: 
+            child = node
+            param = None
+
+        if param in ["scale"]:
+            return param
+        elif self.digraph.nodes[child]["node_type"] != "root":
+            return self.get_edge_data(child)
+        else: 
+            return param
+
+    def start_var_params(self, attr: Any, param: str=None) -> Dict:
         """
         Method to initialize the variational parameters.
 
@@ -124,15 +145,35 @@ class Bbvi:
         Returns:
             Dict: The initial interal variational parameters.
         """
-
-        if attr["param_space"] is None:
-            loc = attr["value"]
-            lower_tri = jnp.diag(jnp.ones(attr["dim"]))
-        elif attr["param_space"] == "positive":
-            loc = jnp.log(attr["value"])
-            lower_tri = jnp.diag(jnp.ones(attr["dim"]))
+        
+        if param == "scale":
+            if attr["param_space"] is None:
+                loc = attr["value"]
+                lower_tri = jnp.diag(jnp.ones(attr["dim"])*10)
+            elif attr["param_space"] == "positive":
+                loc = jnp.log(attr["value"])
+                lower_tri = jnp.diag(jnp.ones(attr["dim"])*10)
+        else:
+            if attr["param_space"] is None:
+                loc = attr["value"]
+                lower_tri = jnp.diag(jnp.ones(attr["dim"]))
+            elif attr["param_space"] == "positive":
+                loc = jnp.log(attr["value"])
+                lower_tri = jnp.diag(jnp.ones(attr["dim"]))
 
         return {"loc": loc, "lower_tri": lower_tri}
+
+    def count_var_params(self) -> None:
+        """
+        Method to count the number of variational parameters.
+        """
+        num_params = 0
+        for item in self.init_var_params.values():
+            num_params += item["loc"].shape[0]
+            k = item["lower_tri"].shape[0]
+            num_params += 1/2 * (k + 1) * k
+        
+        self.num_var_params = num_params
 
     @staticmethod
     def calc_lpred(design_matrix: Array, 
@@ -150,7 +191,6 @@ class Bbvi:
         """
 
         batch_design_matrix = jnp.expand_dims(design_matrix, axis=0)
-        
         array_params = jnp.concatenate([param for param in params.values()], axis=-1)
         batch_params = jnp.expand_dims(array_params, -1)
         batch_nu = jnp.matmul(batch_design_matrix, batch_params)
@@ -257,7 +297,6 @@ class Bbvi:
 
         # Safe intermediary computations
         input = {}
-
         # Safe all log priors 
         # Maybe explicity define shape log-priors via num_var_samples
         log_priors = jnp.array([0.0])
@@ -268,7 +307,6 @@ class Bbvi:
             attr = self.digraph.nodes[node]["attr"]
             childs = list(self.digraph.successors(node))
             parents = list(self.digraph.predecessors(node))
-
             if node_type == "lpred":
                 for parent in parents:
                     edge = self.digraph.get_edge_data(parent, node)
@@ -286,14 +324,11 @@ class Bbvi:
                                         params,
                                         attr["bijector"])
                 # print("Lpred:", node, lpred_val.shape)
-                
-                input[node] = lpred_val
-            
+                input[node] = lpred_val            
             elif node_type == "strong":
                 if self.digraph.nodes[node]["input_fixed"]:
                     log_prior = Bbvi.logprior(attr["dist"], 
                                               samples[node])
-                    
                 else: 
                     # Combine fixed hyperparameter with parameter that is stochastic
                     params = {}
@@ -309,7 +344,7 @@ class Bbvi:
                     init_dist = Bbvi.init_dist(dist=attr["dist"], 
                                                params=params,
                                                additional_params=attr["additional_params"])
-                    # print(init_dist)
+                    
                     log_prior = Bbvi.logprior(init_dist, 
                                               samples[node])
 
@@ -317,36 +352,43 @@ class Bbvi:
                     log_prior = jnp.sum(log_prior, axis=-1)
                 log_priors += log_prior
                 input[node] = samples[node]
-
             elif node_type == "root":
                 params = {}
                 for parent in parents:
                         edge = self.digraph.get_edge_data(parent, node)
                         params[edge["role"]] = input[parent]
 
+                # replace the scale coefficients just with a one 
+                # print("Scale-mean", params["scale"], params["scale"].shape)
+                # print("Scale-mean over batches", jnp.mean(params["scale"], axis=0), jnp.mean(params["scale"], axis=0).shape)
+                
                 # Write function that initializes the dist with new values
                 init_dist = Bbvi.init_dist(dist=attr["dist"],
                                            params=params)
+                # print(init_dist)
                 # Calculate the log_lik
                 log_lik = Bbvi.loglik(init_dist, 
                                       batch_data[node])
+                # print("Mean log-lik", jnp.mean(log_lik, axis=-1), jnp.mean(log_lik, axis=-1).shape)
+                # print("Scaled log-lik", num_obs * jnp.mean(log_lik, axis=-1)[:10], jnp.mean(log_lik, axis=-1).shape)
                 # calculate the scaled log-likelihood
                 scaled_log_lik = Bbvi.calc_scaled_loglik(log_lik,
                                                          num_obs)
         
-        # print("Scaled log-lik", scaled_log_lik.shape)
-        # print("Log-priors", log_priors.shape)
-
+        # print("Scaled log-lik", jnp.mean(scaled_log_lik), jnp.mean(scaled_log_lik).shape)
+        # print("Log-priors", jnp.mean(log_priors), jnp.mean(log_priors).shape)
+        
+        # , (scaled_log_lik, log_lik, params)
         return jnp.mean(scaled_log_lik + log_priors)
 
     @staticmethod 
-    def neg_entropy_unconstr(variational_params: Dict,
+    def neg_entropy_unconstr(var_params: Dict,
                              samples: Dict, 
                              var: str, 
                              num_var_samples: int,
                              key: jax.random.PRNGKey) -> Tuple[Dict, Array]:
         
-        loc, lower_tri = variational_params[var]["loc"], variational_params[var]["lower_tri"]
+        loc, lower_tri = var_params[var]["loc"], var_params[var]["lower_tri"]
         lower_tri = jnp.tril(lower_tri)
         s = mvn_precision_chol_sample(loc=loc, 
                                       precision_matrix_chol=lower_tri, 
@@ -361,13 +403,13 @@ class Bbvi:
         return samples, neg_entropy
 
     @staticmethod 
-    def neg_entropy_posconstr(variational_params: Dict, 
+    def neg_entropy_posconstr(var_params: Dict, 
                                samples: Dict, 
                                var: str, 
                                num_var_samples: int,
                                key: jax.random.PRNGKey) -> Tuple[Dict, Array]:
         
-        loc, lower_tri = variational_params[var]["loc"], variational_params[var]["lower_tri"]
+        loc, lower_tri = var_params[var]["loc"], var_params[var]["lower_tri"]
         lower_tri = jnp.tril(lower_tri)
         s = mvn_precision_chol_sample(loc=loc, 
                                       precision_matrix_chol=lower_tri, 
@@ -384,7 +426,7 @@ class Bbvi:
         return samples, neg_entropy
 
     def lower_bound(self, 
-                    variational_params: Dict,
+                    var_params: Dict,
                     batch_data: Dict,
                     num_obs: int,
                     num_var_samples: int,
@@ -393,7 +435,7 @@ class Bbvi:
         Method to calculate the negative ELBO (evidence lower bound).
 
         Args:
-            variational_params (Dict): The varational paramters in a nested dictionary where the first key identifies the paramter of the model.
+            var_params (Dict): The varational paramters in a nested dictionary where the first key identifies the paramter of the model.
             batch_idx (Array): Indexes of the mini-batch.
             key (jax.random.PRNGKey): A pseudo-random number generation key from JAX.
 
@@ -401,23 +443,21 @@ class Bbvi:
             Array: Negative ELBO.
         """
 
-        key, *subkeys = jax.random.split(key, len(variational_params)+1)
+        key, *subkeys = jax.random.split(key, len(var_params)+1)
         # Define samples here or pass from the top ?
         samples = {}
         total_neg_entropy = jnp.array([])
         i = 0
-        for kw in variational_params.keys():
-
+        for kw in var_params.keys():
             if self.digraph.nodes[kw]["attr"]["param_space"] is None:
-                samples, neg_entropy = Bbvi.neg_entropy_unconstr(variational_params, 
+                samples, neg_entropy = Bbvi.neg_entropy_unconstr(var_params, 
                                                                  samples, 
                                                                  kw, 
                                                                  num_var_samples,
                                                                  subkeys[i])
                 total_neg_entropy = jnp.append(total_neg_entropy, neg_entropy, axis=0)
-                
             elif self.digraph.nodes[kw]["attr"]["param_space"] == "positive":
-                samples, neg_entropy = Bbvi.neg_entropy_posconstr(variational_params, 
+                samples, neg_entropy = Bbvi.neg_entropy_posconstr(var_params, 
                                                                   samples, 
                                                                   kw,
                                                                   num_var_samples, 
@@ -425,7 +465,7 @@ class Bbvi:
                 total_neg_entropy = jnp.append(total_neg_entropy, neg_entropy, axis=0)
             
             i += 1
-        # print(samples)
+        # print(samples["tau"], samples["eta"])
         # print(total_neg_entropy)
         mc_log_prob = self.mc_logprob(batch_data, samples, num_obs)
         elbo = mc_log_prob - jnp.sum(total_neg_entropy)
@@ -444,7 +484,7 @@ class Bbvi:
         Method to start the stochastic gradient optimization. The implementation uses Adam.
 
         Args:
-            step_size (float, optional): Step size (learning rate) of the SGD optimizer (Adam).
+            step_size (Union[float, Any], optional): Step size (learning rate) of the SGD optimizer (Adam).
             Can also be a scheduler. Defaults to 0.01.
             threshold (float, optional): Threshold to stop the optimization. Defaults to 1e-2.
             key_int (int, optional): Integer that is used as argument for PRNG in JAX. Defaults to 1.
@@ -458,8 +498,12 @@ class Bbvi:
             Tuple: Last ELBO and the optimized variational parameters in a dictionary.
         """
 
-        optimizer = optax.adam(learning_rate=step_size)
-        opt_state = optimizer.init(self.init_variational_params)
+        if type(step_size) is float:
+            optimizer = optax.adam(learning_rate=step_size)
+        else:
+            optimizer = optax.adamw(learning_rate=step_size)
+
+        opt_state = optimizer.init(self.init_var_params)
 
         def bbvi_body(idx, bbvi_state):
             
@@ -546,10 +590,10 @@ class Bbvi:
         
         epoch_state = EpochState(self.data,
                                  jnp.array(-jnp.inf),
-                                 self.init_variational_params,
+                                 self.init_var_params,
                                  key,
                                  opt_state,
-                                 self.init_variational_params)
+                                 self.init_var_params)
 
         elbo_history = jnp.array([])
 
@@ -562,12 +606,12 @@ class Bbvi:
 
         self.elbo_hist["elbo"] = elbo_history
         self.elbo_hist["epoch"] = jnp.arange(elbo_history.shape[0])
-        self.variational_params = epoch_state.best_params
-        self.set_trans_variational_params()
+        self.var_params = epoch_state.best_params
+        self.set_trans_var_params()
 
-        return epoch_state.best_elbo, self.trans_variational_params
+        return epoch_state.best_elbo, self.trans_var_params
 
-    def set_trans_variational_params(self):
+    def set_trans_var_params(self):
         """
         Method to obtain the variational parameters in terms of the covariance matrix and not the lower cholesky factor.
         """
@@ -575,9 +619,9 @@ class Bbvi:
         for node in self.graph.prob_traversal_order:
             node_type = self.digraph.nodes[node]["node_type"]
             if node_type == "strong":
-                self.trans_variational_params[node] = {
-                    "loc": self.variational_params[node]["loc"],
-                    "cov": jnp.linalg.inv(jnp.dot(self.variational_params[node]["lower_tri"], self.variational_params[node]["lower_tri"].T))
+                self.trans_var_params[node] = {
+                    "loc": self.var_params[node]["loc"],
+                    "cov": jnp.linalg.inv(jnp.dot(self.var_params[node]["lower_tri"], self.var_params[node]["lower_tri"].T))
                 }
 
     def plot_elbo(self):

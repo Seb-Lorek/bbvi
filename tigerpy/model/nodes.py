@@ -440,18 +440,46 @@ class ModelGraph:
             "weak": ""
         }
 
+        def calculate_font_size(graph):
+            num_nodes = len(graph.nodes)
+            base_font_size = 12  # Initial font size
+            scaling_factor = 0.2  # Adjust this factor based on your preference
+            return round(base_font_size - scaling_factor * num_nodes)
+        
+        def calculate_node_size(graph):
+            num_nodes = len(graph.nodes)
+            base_font_size = 1000  # Initial font size
+            scaling_factor = 5  # Adjust this factor based on your preference
+            return base_font_size - scaling_factor * num_nodes
+
         node_labels = {node: label for node, label in labels.items() if node in node_type}
 
         strong_nodes = [node for node, node_type in node_type.items() if node_type == "strong" or node_type == "root"]
         weak_nodes = [node for node, node_type in node_type.items() if node_type != "strong"]
 
-        nx.draw_networkx_edges(self.digraph, pos, ax=ax, node_size=1000)
-        nx.draw_networkx_labels(self.digraph, pos, ax=ax, labels=node_labels, font_size=10)
-
-        nx.draw_networkx_nodes(self.digraph, pos, nodelist=strong_nodes, ax=ax, node_color="lightblue",
-                               node_shape=node_shapes["strong"], node_size=1000)
-        nx.draw_networkx_nodes(self.digraph, pos, nodelist=weak_nodes, ax=ax, node_color="lightblue",
-                               node_shape=node_shapes["weak"], node_size=1000)
+        nx.draw_networkx_edges(self.digraph, 
+                               pos, 
+                               ax=ax, 
+                               node_size=calculate_node_size(self.digraph))
+        nx.draw_networkx_labels(self.digraph, 
+                                pos, 
+                                ax=ax, 
+                                labels=node_labels, 
+                                font_size=calculate_font_size(self.digraph))
+        nx.draw_networkx_nodes(self.digraph, 
+                               pos, 
+                               nodelist=strong_nodes, 
+                               ax=ax, 
+                               node_color="lightblue",
+                               node_shape=node_shapes["strong"], 
+                               node_size=calculate_node_size(self.digraph))
+        nx.draw_networkx_nodes(self.digraph, 
+                               pos, 
+                               nodelist=weak_nodes, 
+                               ax=ax, 
+                               node_color="lightblue",
+                               node_shape=node_shapes["weak"], 
+                               node_size=calculate_node_size(self.digraph))
 
         edge_labels = nx.get_edge_attributes(self.digraph, "bijector")
 
@@ -464,6 +492,10 @@ class ModelGraph:
             else:
                 edge_labels[key] = ""
 
-        nx.draw_networkx_edge_labels(self.digraph, pos, edge_labels=edge_labels, ax=ax, font_size=8)
+        nx.draw_networkx_edge_labels(self.digraph, 
+                                     pos, 
+                                     edge_labels=edge_labels, 
+                                     ax=ax, 
+                                     font_size=8)
 
         plt.show()
