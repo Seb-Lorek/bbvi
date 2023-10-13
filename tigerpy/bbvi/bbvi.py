@@ -53,21 +53,23 @@ from ..distributions.mvn import (
 )
 
 class BbviState(NamedTuple):
-    data: Dict
+    data: dict
     batches: list
     num_obs: int
     key: jax.random.PRNGKey
+    params: dict
     opt_state: Any
-    params: Any
+    params_new: dict
     elbo: Array
 
 class EpochState(NamedTuple):
     data: Dict
-    best_elbo: Array
-    best_params: Dict
+    elbo_best: Array
+    params_best: dict
     key: jax.random.PRNGKey
+    params: dict
     opt_state: Any
-    params: Any
+    params_new: dict
 
 
 class Bbvi:
@@ -83,6 +85,7 @@ class Bbvi:
         self.var_params = {}
         self.num_var_params = None
         self.trans_var_params = {}
+        self.return_loc_params = {}
         self.elbo_hist = {}
 
         self.set_data()
@@ -102,7 +105,7 @@ class Bbvi:
             elif node_type == "root":
                 self.data[node] = attr["value"]
 
-    def set_var_params(self) -> None:
+    def set_var_params(self, loc_prec: int=1, scale_prec: int=10) -> None:
         """
         Method to set the internal variational parameters.
         """
@@ -112,7 +115,7 @@ class Bbvi:
             if node_type == "strong":
                 attr = self.digraph.nodes[node]["attr"]
                 param = self.get_edge_data(node)
-                self.init_var_params[node] = self.start_var_params(attr, param)
+                self.init_var_params[node] = self.start_var_params(attr, param, loc_prec, scale_prec)
 
     def get_edge_data(self, node) -> None:
         """
@@ -135,7 +138,7 @@ class Bbvi:
         else: 
             return param
 
-    def start_var_params(self, attr: Any, param: str=None) -> Dict:
+    def start_var_params(self, attr: Any, param: str=None, loc_prec: int=1, scale_prec: int=10) -> Dict:
         """
         Method to initialize the variational parameters.
 
@@ -149,17 +152,17 @@ class Bbvi:
         if param == "scale":
             if attr["param_space"] is None:
                 loc = attr["value"]
-                lower_tri = jnp.diag(jnp.ones(attr["dim"])*10)
+                lower_tri = jnp.diag(jnp.ones(attr["dim"])*scale_prec)
             elif attr["param_space"] == "positive":
                 loc = jnp.log(attr["value"])
-                lower_tri = jnp.diag(jnp.ones(attr["dim"])*10)
+                lower_tri = jnp.diag(jnp.ones(attr["dim"])*scale_prec)
         else:
             if attr["param_space"] is None:
                 loc = attr["value"]
-                lower_tri = jnp.diag(jnp.ones(attr["dim"]))
+                lower_tri = jnp.diag(jnp.ones(attr["dim"])*loc_prec)
             elif attr["param_space"] == "positive":
                 loc = jnp.log(attr["value"])
-                lower_tri = jnp.diag(jnp.ones(attr["dim"]))
+                lower_tri = jnp.diag(jnp.ones(attr["dim"])*loc_prec)
 
         return {"loc": loc, "lower_tri": lower_tri}
 
@@ -378,7 +381,6 @@ class Bbvi:
         # print("Scaled log-lik", jnp.mean(scaled_log_lik), jnp.mean(scaled_log_lik).shape)
         # print("Log-priors", jnp.mean(log_priors), jnp.mean(log_priors).shape)
         
-        # , (scaled_log_lik, log_lik, params)
         return jnp.mean(scaled_log_lik + log_priors)
 
     @staticmethod 
@@ -473,29 +475,29 @@ class Bbvi:
         return - elbo
 
     def run_bbvi(self,
-                 step_size: Union[Any, float] = 0.01,
-                 threshold: float = 1e-2,
-                 key_int: int = 1,
-                 batch_size: int = 64,
-                 num_var_samples = 64,
-                 chunk_size: int = 1,
-                 epochs: int = 1000) -> tuple:
+                 step_size: Union[Any, float]=1e-3,
+                 threshold: float=1e-2,
+                 key_int: int=1,
+                 batch_size: int=64,
+                 num_var_samples=32,
+                 chunk_size: int=1,
+                 epochs: int=500) -> tuple:
         """
         Method to start the stochastic gradient optimization. The implementation uses Adam.
 
         Args:
-            step_size (Union[float, Any], optional): Step size (learning rate) of the SGD optimizer (Adam).
-            Can also be a scheduler. Defaults to 0.01.
+            step_size (Union[Any, float], optional): Step size (learning rate) of the SGD optimizer (Adam).
+            Can also be a scheduler. Defaults to 1e-3.
             threshold (float, optional): Threshold to stop the optimization. Defaults to 1e-2.
             key_int (int, optional): Integer that is used as argument for PRNG in JAX. Defaults to 1.
             batch_size (int, optional): Batchsize, i.e. number of samples to use during SGD. Defaults to 64.
-            num_var_samples (int, optional): Number of variational samples used for the Monte Carlo integraion. Defaults to 64.
-            chunk_size (int, optional): Chunk sizes of to evaluate. Defaults to 1.
-            epoch (int, optional): Number of times that the learning algorithm will
-            work thorugh the entire data. Defaults to 1000.
+            num_var_samples (int, optional): Number of variational samples used for the Monte Carlo integration. Defaults to 64.
+            chunk_size (int, optional): Chunk sizes over which jax.lax.scan scans, 1 results in a classic for loop. Defaults to 1.
+            epoch (int, optional): Number of iterations loops of the optimization algorithm such that 
+            the algorithm has iterated each time through the entire dataset. Defaults to 500.
 
         Returns:
-            Tuple: Last ELBO and the optimized variational parameters in a dictionary.
+            Tuple: Last ELBO (jnp.float32) and the optimized variational parameters (dict).
         """
 
         if type(step_size) is float:
@@ -514,21 +516,22 @@ class Bbvi:
             batch_data = jax.tree_map(lambda x: x[batch_idx], bbvi_state.data)
 
             # Note: num_var_samples is a global variable
-            neg_elbo, grad = jax.value_and_grad(self.lower_bound)(bbvi_state.params,
-                                                                           batch_data,
-                                                                           bbvi_state.num_obs,
-                                                                           num_var_samples,
-                                                                           subkey)
-            updates, opt_state = optimizer.update(grad, bbvi_state.opt_state, bbvi_state.params)
-            params = optax.apply_updates(bbvi_state.params, updates)
+            neg_elbo, grad = jax.value_and_grad(self.lower_bound)(bbvi_state.params_new,
+                                                                  batch_data,
+                                                                  bbvi_state.num_obs,
+                                                                  num_var_samples,
+                                                                  subkey)
+            updates, opt_state = optimizer.update(grad, bbvi_state.opt_state, bbvi_state.params_new)
+            params_new = optax.apply_updates(bbvi_state.params_new, updates)
             elbo = - neg_elbo
 
             return BbviState(bbvi_state.data,
                              bbvi_state.batches,
                              bbvi_state.num_obs,
                              key,
+                             bbvi_state.params_new,
                              opt_state,
-                             params,
+                             params_new,
                              elbo)
         
         def epoch_body(epoch_state, scan_input):
@@ -546,8 +549,9 @@ class Bbvi:
                                    batches,
                                    num_obs,
                                    key,
-                                   epoch_state.opt_state,
                                    epoch_state.params,
+                                   epoch_state.opt_state,
+                                   epoch_state.params_new,
                                    jnp.array(0.0))
 
             # Note: batch_size is a global variable 
@@ -557,26 +561,27 @@ class Bbvi:
                                            bbvi_state)
             
             # Choose max ELBO here and pass to EpochState 
-            def true_fn(curr_param, curr_elbo, best_param, best_elbo):
-                return curr_param, curr_elbo
+            def true_fn(params, elbo, params_best, elbo_best):
+                return params, elbo
             
-            def false_fn(curr_param, curr_elbo, best_param, best_elbo):
-                return best_param, best_elbo
+            def false_fn(params, elbo, params_best, elbo_best):
+                return params_best, elbo_best
             
-            best_params, best_elbo = jax.lax.cond(bbvi_state.elbo > epoch_state.best_elbo,
+            params_best, elbo_best = jax.lax.cond(bbvi_state.elbo > epoch_state.elbo_best,
                                                          true_fn,
                                                          false_fn,
                                                          bbvi_state.params,
                                                          bbvi_state.elbo,
-                                                         epoch_state.best_params, 
-                                                         epoch_state.best_elbo)
+                                                         epoch_state.params_best, 
+                                                         epoch_state.elbo_best)
             
             return EpochState(epoch_state.data,
-                              best_elbo,
-                              best_params,
+                              elbo_best,
+                              params_best,
                               bbvi_state.key,
+                              bbvi_state.params,
                               bbvi_state.opt_state,
-                              bbvi_state.params), bbvi_state.elbo
+                              bbvi_state.params_new), bbvi_state.elbo
 
         @partial(jax.jit, static_argnums=0)
         def jscan(chunk_size: int, epoch_state: EpochState) -> Tuple[EpochState, jnp.array]:
@@ -592,6 +597,7 @@ class Bbvi:
                                  jnp.array(-jnp.inf),
                                  self.init_var_params,
                                  key,
+                                 self.init_var_params,
                                  opt_state,
                                  self.init_var_params)
 
@@ -606,10 +612,10 @@ class Bbvi:
 
         self.elbo_hist["elbo"] = elbo_history
         self.elbo_hist["epoch"] = jnp.arange(elbo_history.shape[0])
-        self.var_params = epoch_state.best_params
+        self.var_params = epoch_state.params_best
         self.set_trans_var_params()
 
-        return epoch_state.best_elbo, self.trans_var_params
+        return epoch_state.elbo_best, self.return_loc_params
 
     def set_trans_var_params(self):
         """
@@ -622,6 +628,9 @@ class Bbvi:
                 self.trans_var_params[node] = {
                     "loc": self.var_params[node]["loc"],
                     "cov": jnp.linalg.inv(jnp.dot(self.var_params[node]["lower_tri"], self.var_params[node]["lower_tri"].T))
+                }
+                self.return_loc_params = {
+                    "loc": self.var_params[node]["loc"]
                 }
 
     def plot_elbo(self):
