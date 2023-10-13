@@ -8,8 +8,14 @@ Explain inference alogorithm and give overview of use in tigerpy.
 
 ## Model formulation {#sec-model-setup}
 
+Create schema of how to combine the different classes of tigerpy.model. After that exolain the internal graph structure. 
+
+
+
 ## "Black-box" variational inference algorithm {#sec-bbvi-impl}
 
 The inference algorithm has commplexity $\mathcal{O}(MSD)$, $M$ := mini-batch size, $S$ := number  of MC samples from the noise distribution and $D$ is the number of model parameters, for which we employ the inference algorithm. The added complexity of automatic differentiation over analytic gradients is roughly constant. For using a full data batch we obtain $\mathcal{O}(NSD)$ compared to $\mathcal{O}(ND)$ for CAVI hence we only obtain sizeable speed increase for $M \ll N$.
 
 ## Technology {#sec-technology}
+
+Some words on JAX, networkx etc.

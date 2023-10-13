@@ -4,4 +4,4 @@ bibliography: ["bib/references.bib", "bib/packages.bib"]
 
 # Simulation study {#sec-sim}
 
-Results from the simulation study.
+In this section we inspect the results from a few simulations studies. At first we study if the implemntation work. After that we study the posterior results from BBVI compared to MCMC for a simple Bayesian regression model. Finally we will compare BBVI with MCMC for a location-scale regresion model in terms of the approximation measured by the KL-divergence.

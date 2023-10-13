@@ -2,6 +2,6 @@
 bibliography: ["bib/references.bib", "bib/packages.bib"]
 ---
 
-# Conclusion {#sec-conc}
+# Conclusion {#sec-concl}
 
 The thesis didn't find anything new.
