@@ -4,7 +4,7 @@ bibliography: ["bib/references.bib", "bib/packages.bib"]
 
 # Bayesian hierarchical modelling {#sec-bhm}
 
-In Bayesian hierarchical modelling, we explicitly express our assumptions not only concerning the data through the likelihood function but also consider the model parameters as random variables with associated prior probability distributions. For certain hyperparameters of a prior we may even set some hyperprior probability distributions. This means we are fully transparent on the distributional assumptions in our statistical model. Thus we set the joint distribution of the model to a specific factorized form, which in turns implies a hierarchical structure. The hierarchical structure comes from the fact that a conditional distribution dictates the dependencies between random variables and hence the flow of information in our statistical model. This furthermore allows to translate Bayesian hierarchical models into the framework of directed graphical models. In this section we introduce the class of Bayesian semiparametric distributional regression models, being a important subcategory of Bayesian hierarchical models, for which we want to asses the statistical properties of BBVI in comparison to MCMC in simulation studies later on ([Chapter @sec-sim]). Moreover we consider how to integrate this model class into the framework of probabilistic graphical models, also referred to as Bayesian networks.
+This Chapter introduces the class of Bayesian semiparametric distributional regression models, being a important subcategory of Bayesian hierarchical models, for which we want to asses the statistical properties of BBVI in simulation studies later on ([Chapter @sec-sim]). Moreover we consider how to integrate this model class into the framework of probabilistic graphical models, also referred to as Bayesian networks. In Bayesian hierarchical modelling, we explicitly express our assumptions not only concerning the data through the likelihood function but also consider the model parameters as random variables with associated prior probability distributions. This means we are fully transparent on the distributional assumptions in our statistical model.
 
 ## Distributional regression {#sec-dist-reg}
 
@@ -33,11 +33,11 @@ $$
 \end{split}
 $$
 
-To appropriately respect the parameter space of $\vartheta_{i, l}$, we employ a monotonic inverse link function $h^{-1}_{l}$ [@Fahrmeir2021, p. 645]. In GAMLSS we might even include furhter terms like latent parameters (random-effects) [@Rigby2005, p. 508] into the linear predictor, however in this thesis we will not go beyond the linear predictor specification shown in (@eq-lpred). Traditionally inference in GAMLSS relied either on the RS or CG algorithm [@Rigby1996; @Rigby2005] or MCMC methods in a Bayesian distributional regression setup [@Klein2015]. Modern inference techniques, such as BBVI, may offer intriguing use cases by enabling the expansion of model complexity and scalability to large data sets. In Bayesian semiparametric distributional regression, we naturally augment all parameters with their respective priors, thereby obtaining a hierarchical structure.
+To appropriately respect the parameter space of $\vartheta_{i, l}$, we employ a monotonic inverse link function $h^{-1}_{l}$ [@Fahrmeir2021, p. 645]. In GAMLSS we might even include furhter terms like latent parameters (random-effects) [@Rigby2005, p. 508] into the linear predictor, however in this thesis we will not go beyond the additive linear predictor shown in (@eq-lpred). Traditionally inference in GAMLSS relied either on the RS or CG algorithm [@Rigby1996; @Rigby2005] or MCMC methods in a Bayesian distributional regression setup [@Klein2015]. Modern inference techniques, such as BBVI, may offer intriguing use cases by enabling the expansion of model complexity and scalability to large data sets. In Bayesian semiparametric distributional regression, we naturally augment all parameters with their respective priors.
 
 ## Semiparametric covariate effects {#sec-semi-para}
 
-In the context of Bayesian semiparametric distributional regression we can flexibly combine fixed and smooth effects in the linear predictor. This may be especially admissible when we expect that the relationship between a covariate and reponse is highly non-linear and difficult to model using simple polynomial transformations only. For such scenarios, @Eilers1996 proposed a solution using penalized basis Splines (P-Splines), which allow us to flexibly model the relationship at hand but to maintain a smooth fit at the same time. @Lang2004 extended this idea to a Bayesian approach, which offers an alternative possibility of estimating the coefficients and finding a suitable smoothing parameter. P-splines are especially interesting as they allow to estimate a non-linear and smooth function $f$ in the linear predictor relatively parsimonious compared to alternatives like smoothing splines [@Lang2004, p. 184]. To begin with, the covariate domain is divided into distinct intervals, which are separated by equally spaced knots. The usual choice is to use 20-40 knots and use the (inverse) smoothing parameter to enforce a smooth fit. In a next step, basis functions are placed across the intervals using basis spline (B-spline) basis functions of degree $l$. To obtain a twice differentiable basis function it is common to use a degree of 3, for an in depth definition of the B-spline basis consult @Fahrmeir2021 [pp. 445]. Using a weighted linear combination of $d$ B-spline basis functions obtains the following specification for the smooth effect function
+In the context of Bayesian semiparametric distributional regression we can flexibly combine fixed and smooth effects in the linear predictor. This may be especially admissible when we expect that the relationship between a covariate and the reponse is highly non-linear and difficult to model using simple polynomial transformations only. For such scenarios, @Eilers1996 proposed a solution using penalized basis Splines (P-Splines), which allow us to flexibly model the relationship at hand but to maintain a smooth fit at the same time. @Lang2004 extended this idea to a Bayesian approach, which offers an alternative possibility of estimating the coefficients and finding a suitable smoothing parameter. P-splines are especially interesting as they allow to estimate a non-linear and smooth function $f$ in the linear predictor relatively parsimonious compared to alternatives like smoothing splines [@Lang2004, p. 184]. To begin with, the covariate domain is divided into distinct intervals, which are separated by equally spaced knots. The usual choice is to use 20-40 knots and use the (inverse) smoothing parameter to enforce a smooth fit. In a next step, basis functions are placed across the intervals using basis spline (B-spline) basis functions of degree $l$. To obtain a twice differentiable basis function it is common to use a degree of 3, for an in depth definition of the B-spline basis consult @Fahrmeir2021 [pp. 445]. Using a weighted linear combination of $d$ B-spline basis functions obtains the following specification for the smooth effect function
 
 $$
 f(\nu_{i}) = \sum_{j=1}^{d} \gamma_{l} B_{j}(\nu_{i}).
@@ -58,7 +58,7 @@ To obtain a smooth fit in a Bayesian setting we replace the squared difference p
 $$
 \begin{split}
     \gamma_{j} | \gamma_{j-1} &\sim \mathcal{N}(\gamma_{j-1}, \tau^{2}), \ \text{for} \ k = 1 \\
-    \gamma_{j} | \gamma_{j-1}, \gamma_{j-2} &\sim \mathcal{N}(2\gamma_{j-1} - \gamma_{j-2}, \tau^{2}), \ \text{for} \ k = 2
+    \gamma_{j} | \gamma_{j-1}, \gamma_{j-2} &\sim \mathcal{N}(2\gamma_{j-1} - \gamma_{j-2}, \tau^{2}), \ \text{for} \ k = 2.
 \end{split}
 $$
 
@@ -77,19 +77,19 @@ $$
 p(\gammavec | \tau^{2}) = (2 \pi)^{-\frac{r \left( \frac{1}{\tau^{2}} \K \right)}{2}} \det \left( \frac{1}{\tau^2}K \right)_{+}^{\frac{1}{2}}\exp \left( -\frac{1}{2} \gammavec^{\mathrm{T}}\frac{1}{\tau^{2}} \K \gammavec \right)
 $$
 
-The rank deficient precision matrix $\frac{1}{\tau^{2}} \K$ results from the matrix multiplication $\D^{\mathrm{T}}\D$, where $\D$ denotes the difference matrix for the k-th order differences of the coefficients [@Fahrmeir2021, pp. 455-456]. This distribution is a degenerate multivariate normal distribution, leading to an improper prior. Moreover $\det(\cdot)_{+}$ denotes the pseudo determinant, due to the precision matrix being rank deficient. To complement the prior specification we use the inverse gamma distribution as a hyperprior on the hyperparameter $\tau^{2}$
+The rank deficient precision matrix $\frac{1}{\tau^{2}} \K$ results from the matrix multiplication $\frac{1}{\tau^{2}} \D^{\mathrm{T}}\D$, where $\D$ denotes the difference matrix for the k-th order differences of the coefficients [@Fahrmeir2021, pp. 455-456]. This distribution is a degenerate multivariate normal distribution, leading to an improper prior. Moreover $\det(\cdot)_{+}$ denotes the pseudo determinant, due to the precision matrix being rank deficient. To complement the prior specification we use the inverse gamma distribution as a prior^[We avoid using the term "hyperprior" to prevent unnecessary complexity in our terminology.] on the parameter $\tau^{2}$
 
 $$
 \tau^{2} \sim \text{InvG}(a,b),
 $$
 
-where $a$ and $b$ are hyperparameters that need to be set. @Lang2004 [p. 187] propose to use $a = 1$ and $b = 5\text{e-}3/5\text{e-}4/5\text{e-}5$. The parameter $\tau^{2}$ acts as an inverse smoothing parameter where large values imply flexible function shapes, while small values imply smooth function shapes. Because we set a probability distribution on this parameter we also infer the posterior distribution of this parameter during inference. To ensure the identifiability of all parameters in a additive linear predictor, we need to include centering constraints for the smooth functions $f$. This is achieved by using sum to zero constraints on each smooth function $\sum_{i=1}^{n} f(\nu_{i}) = 0$ [@Wood2017, pp. 175-176]. A common choice is to use the QR-decomposition on the column means of the matrix $\Z_{n \times d}$. From this we obtain a matrix $\T_{d \times d-1}$, being the unitary matrix from the QR-decomposition of $\bar{\zvec}_{d \times 1}$ excluding the first column. This matrix is used to transform covariate design matrix to $\Z_{n \times d} \T_{d \times d-1}$ and the penalty matrix to $\T^{\mathrm{T}}_{d-1 \times d} \K_{d \times d} \T_{d \times d-1}$, such that the linear constraint is satisfied. As a byproduct, we reduce the dimension of the internal parameter $\tilde{\gammavec}_{d-1 \times 1}$ for each smooth effect by 1. We can however recover $\gammavec_{d \times 1}$ easily through the following linear transformation
+where $a$ and $b$ are hyperparameters that need to be set. @Lang2004 [p. 187] propose to use $a = 1$ and $b = 5\text{e-}3/5\text{e-}4/5\text{e-}5$. The parameter $\tau^{2}$ acts as an inverse smoothing parameter where large values imply flexible function shapes, while small values imply smooth function shapes. Because we set a probability distribution on this parameter we also infer the posterior distribution of this parameter during inference. To ensure the identifiability of all parameters in the additive linear predictor, we need to include centering constraints for the smooth functions $f$ during optimization in BBVI. This is achieved by using sum to zero constraints on each smooth function $\sum_{i=1}^{n} f(\nu_{i}) = 0$ [@Wood2017, pp. 175-176]. A common choice is to use the QR-decomposition on the column means of the matrix $\Z_{n \times d}$. From this we obtain a matrix $\T_{d \times d-1}$, being the unitary matrix from the QR-decomposition of $\bar{\zvec}_{d \times 1}$ excluding the first column. This matrix is used to transform covariate design matrix to $\Z_{n \times d} \T_{d \times d-1}$ and the penalty matrix to $\T^{\mathrm{T}}_{d-1 \times d} \K_{d \times d} \T_{d \times d-1}$, such that the linear constraint is satisfied. As a byproduct, we reduce the dimension of the internal parameter $\tilde{\gammavec}_{d-1 \times 1}$ for each smooth effect by 1. We can however recover $\gammavec_{d \times 1}$ easily through the following linear transformation
 
 $$
 \gammavec_{d \times 1} = \T_{d \times d-1} \tilde{\gammavec}_{d-1 \times 1},
 $$
 
-for further details consult @Wood2017 [p. 211]. At last we can rewrite the linear predictors from (@eq-lpred) in a vectorized form including the sum to zero constraint
+for more comprehensive information refer to @Wood2017 [p. 211]. At last we can rewrite the additive linear predictors from (@eq-lpred) into a vectorized form including the sum to zero constraint
 
 $$
 \begin{split}
@@ -104,22 +104,59 @@ $$
 \betavec \sim \mathcal{N}(\zerovec, 100 \I),
 $$
 
-and each of the parameters $\gammavec_{1,l}, \ldots, \gammavec_{p, l}$ with the multivariate degenerate normal prior conditional on the inverse smoothing parameter, which has an inverse gamma prior with a specification discussed above. Such a set-up could in theory easily be augmented by including interactions between smooth effects and a covariate as in varying coefficient models (VCM) or approximations of two dimensional smooth surface functions [@Lang, p. 188 ff.].
+and each of the parameters $\gammavec_{1,l}, \ldots, \gammavec_{p, l}$ with the prior specification $p(\gammavec | \tau^{2})p(\tau^{2})$ outlined above. Such a set-up could in theory easily be augmented by including interactions between smooth effects and a covariate as in varying coefficient models (VCM), approximations of two dimensional smooth surface functions or geoaddtive effects [@Lang2004, p. 188 ff.].
 
-## Directed graphical models {#sec-dgm}
+## Probabilistic graphical models {#sec-pgm}
 
-A Bayesian network or probabilistic graphical model is generally a probability distribution for the random variables $\{x_{1}, \ldots, x_{n}\}$ that can the factorized in the following way
+A Bayesian network or probabilistic graphical model is generally a probability distribution for the random variables $\{x_{1}, \ldots, x_{n}\}$ that can be factorized in the following way
 
 $$
 p(x_{1}, \ldots, x_{n}) = \prod_{i=1}^{n}p(x_{i}| \text{pa}(x_{i})).
 $$
 
-In this context $\text{pa}(x_{i})$ are the parents of the variable $x_{i}$. 
+In this context $\text{pa}(x_{i})$ are the parents of the variable $x_{i}$ and thus the variables $x_{i}$ depends on. The dependence structure in a Bayesian network lends itself to a representation as a Directed Acyclic Graph (DAG), where every variable in the joint distribution obtains a node and parents are connnected to childs through arrows. When formulating a Bayesian hierarchical regression model, we make a priori dependence decisions regarding the likelihood and all associated priors. Thus we set the joint distribution of the model to a specific factorized form, which in turns implies a hierarchical structure. The hierarchical structure comes from the fact that conditional distributions dictate the dependencies between random variables and hence the flow of information in our statistical model. This furthermore allows to naturally translate Bayesian hierarchical models into the framework of probabilistic graphical models. @fig-plate-bsemi-normal-reg visualizes the DAG for a Bayesian semiparameteric normal regression model.
 
-The dependence structure in a Bayesian network lend itself to a representation as a Directed Acyclic Graph (DAG). Where every variable in the joint distribution obtains a node and parents are connnected to childs through errors.
+```{r, engine='tikz'}
+#| label: fig-plate-bsemi-normal-reg
+#| fig-cap: "Plate notation of the dependence structure in a Bayesian semiparametric normal (location only) regression model."
+#| fig-scap: "Plate notation of the Bayesian semiparametric normal regression model."
 
-Where we have different node types that define the graph structure. 
+\usetikzlibrary{bayesnet}
 
-Propositional variables as nodes and arrows from parents to children. 
+% Plate diagram
+\begin{tikzpicture}
+    % Define nodes
+    \node[obs] (y) {$y_{i}$};
+    \node[const, above=of y, xshift=-1cm] (loc) {$\eta_{i}$};
+    \node[const, above=of loc, xshift=-2cm] (x) {$\mathbf{x}_{i}$};
+    \node[latent, above=of loc, xshift=-1cm, yshift=0.5cm] (beta) {$\boldsymbol{\beta}$};
+    \node[const, above=of beta, xshift=-1cm] (beta_loc) {$\boldsymbol{\mu}_{\boldsymbol{\beta}}$};
+    \node[const, above=of beta, xshift=1cm] (beta_sig) {$\boldsymbol{\Sigma}_{\boldsymbol{\beta}}$};
+    \node[const, above=of loc, xshift=1cm] (z) {$\mathbf{z}_{i}$};
+    \node[latent, above=of loc, xshift=2cm, yshift=0.5cm] (gamma) {$\boldsymbol{\gamma}$};
+    \node[latent, above=of gamma] (tau) {$\tau^{2}$};
+    \node[const, above=of tau, xshift=-1cm] (a_tau) {$a_{\tau^{2}}$};
+    \node[const, above=of tau, xshift=1cm] (b_tau) {$b_{\tau^{2}}$};
+    \node[latent, above= of y, xshift=4cm] (scale) {$\sigma$};
+    \node[const, above=of scale, xshift=-1cm] (a_sig) {$a_{\sigma}$};
+    \node[const, above=of scale, xshift=1cm] (b_sig) {$b_{\sigma}$};
 
-The directed nature of the DAG shows us for example how to generate new data under the statistical model or conduct prediction.
+    % Connect the nodes
+    \edge [shorten <= 2pt] {loc, scale} {y};
+    \edge [shorten >= 2pt, shorten <= 2pt] {x, beta, z, gamma} {loc};
+    \edge [shorten <= 2pt] {beta_loc, beta_sig} {beta};
+    \edge [shorten <= 2pt] {tau} {gamma};
+    \edge [shorten <= 2pt] {a_tau, b_tau} {tau};
+    \edge [shorten <= 2pt] {a_sig, b_sig} {scale};
+
+    % Plates
+    \plate {y_loc} {(y)(loc)(x)(z)} {$i = 1, \dots, n$};
+
+\end{tikzpicture}
+```
+
+Compared to DAGs with only one node type, one can distinguish between different node types in a Bayesian network. Nodes that are random variables are drawn with a circle, while constant (non-random) nodes are drawn without a circle. Constant nodes are either observed data, linear predictor nodes or hyperparameters of the prior distributions. Moreover the observed data and hyperparameters constitute the leaves of the graph. The generality of this framework proves highly beneficial when constructing Bayesian hierarchical (regression) models. It not only offers reusable building blocks for creating a wide variety of probabilistic models in computer programs but also directly implies the sequence of updating the nodes during inference due to the directed nature of the graph. Efficient traversal algorithms can thus be employed to navigate the directed graph, taking into account the interdependencies among the nodes. One example of such a traversal algorithm is the topological sorting algorithm [REF].
+
+
+
+
