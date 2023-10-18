@@ -42,3 +42,11 @@ ADEMP is an acronym for:
 - Bias, EmpSE (also boxplots) and their related Monte Carlo SE.
 - Kullback-Leibler divergence.
 - MSE and its related Monte Carlo SE.
+
+## Dev Note 
+
+Run the python scripts from the project directory `bbvi`.
+
+```
+python3 simulation/scipt.py
+```

@@ -615,8 +615,6 @@ class Bbvi:
         self.var_params = epoch_state.params_best
         self.set_trans_var_params()
 
-        return epoch_state.elbo_best, self.return_loc_params
-
     def set_trans_var_params(self):
         """
         Method to obtain the variational parameters in terms of the covariance matrix and not the lower cholesky factor.
@@ -629,7 +627,7 @@ class Bbvi:
                     "loc": self.var_params[node]["loc"],
                     "cov": jnp.linalg.inv(jnp.dot(self.var_params[node]["lower_tri"], self.var_params[node]["lower_tri"].T))
                 }
-                self.return_loc_params = {
+                self.return_loc_params[node] = {
                     "loc": self.var_params[node]["loc"]
                 }
 
