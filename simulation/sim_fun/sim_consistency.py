@@ -32,7 +32,7 @@ def sim_fun(n_sim):
 
     for config in var_grid:
         store_result = []
-        store_coef = [] 
+        store_coef = []
         for i in range(n_sim):
             result, true_coef = do_one(config["response_dist"], config["n_obs"], key_ints[i])
             store_result.append(result)
@@ -151,7 +151,7 @@ def do_inference(graph, n_obs, key_int):
                    batch_size=128,
                    num_var_samples=64,
                    chunk_size=50,
-                   epochs=250)        
+                   epochs=250)    
     
     return q
 
@@ -197,12 +197,13 @@ print(test1,
 # Try with small n_sim=10 
 start_time = time.time()
 
-test_ten = sim_fun(10)
+n=2
+test_ten = sim_fun(n)
 
 end_time = time.time()
 
 time_elapsed = end_time - start_time 
 
-print(f"Time elapsed for n_sim=10:{time_elapsed} seconds")
+print(f"Time elapsed for n_sim={n}:{time_elapsed} seconds")
 
 print(test_ten)

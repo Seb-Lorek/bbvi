@@ -48,5 +48,5 @@ ADEMP is an acronym for:
 Run the python scripts from the project directory `bbvi`.
 
 ```
-python3 simulation/script.py
+python3 simulation/main_sim.py
 ```

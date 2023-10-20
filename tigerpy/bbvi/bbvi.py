@@ -33,7 +33,9 @@ from typing import (
 from .transform import (
     log_transform,
     exp_transform,
-    batched_jac_determinant
+    batched_jac_determinant,
+    log_cholesky_parametrization,
+    log_cholesky_parametrization_to_tril
 )
 
 from ..model.model import (
@@ -152,29 +154,33 @@ class Bbvi:
         if param == "scale":
             if attr["param_space"] is None:
                 loc = attr["value"]
-                lower_tri = jnp.diag(jnp.ones(attr["dim"])*scale_prec)
+                lower_tri = jnp.tril(jnp.diag(jnp.ones(attr["dim"]) * scale_prec))
+                log_scale = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
             elif attr["param_space"] == "positive":
                 loc = jnp.log(attr["value"])
-                lower_tri = jnp.diag(jnp.ones(attr["dim"])*scale_prec)
+                lower_tri = jnp.tril(jnp.diag(jnp.ones(attr["dim"]) * scale_prec))
+                log_scale = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
         else:
             if attr["param_space"] is None:
                 loc = attr["value"]
-                lower_tri = jnp.diag(jnp.ones(attr["dim"])*loc_prec)
+                lower_tri = jnp.tril(jnp.diag(jnp.ones(attr["dim"]) * loc_prec))
+                log_scale = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
             elif attr["param_space"] == "positive":
                 loc = jnp.log(attr["value"])
-                lower_tri = jnp.diag(jnp.ones(attr["dim"])*loc_prec)
+                lower_tri = jnp.tril(jnp.diag(jnp.ones(attr["dim"]) * loc_prec))
+                log_scale = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
 
-        return {"loc": loc, "lower_tri": lower_tri}
+        return {"loc": loc, "log_scale": log_scale}
 
     def count_var_params(self) -> None:
         """
         Method to count the number of variational parameters.
         """
+
         num_params = 0
         for item in self.init_var_params.values():
             num_params += item["loc"].shape[0]
-            k = item["lower_tri"].shape[0]
-            num_params += 1/2 * (k + 1) * k
+            num_params += item["log_scale"].shape[0]
         
         self.num_var_params = num_params
 
@@ -390,8 +396,8 @@ class Bbvi:
                              num_var_samples: int,
                              key: jax.random.PRNGKey) -> Tuple[Dict, Array]:
         
-        loc, lower_tri = var_params[var]["loc"], var_params[var]["lower_tri"]
-        lower_tri = jnp.tril(lower_tri)
+        loc, log_scale = var_params[var]["loc"], var_params[var]["log_scale"]
+        lower_tri = log_cholesky_parametrization_to_tril(log_scale, d=loc.shape[0])
         s = mvn_precision_chol_sample(loc=loc, 
                                       precision_matrix_chol=lower_tri, 
                                       key=key, 
@@ -411,8 +417,8 @@ class Bbvi:
                                num_var_samples: int,
                                key: jax.random.PRNGKey) -> Tuple[Dict, Array]:
         
-        loc, lower_tri = var_params[var]["loc"], var_params[var]["lower_tri"]
-        lower_tri = jnp.tril(lower_tri)
+        loc, log_scale = var_params[var]["loc"], var_params[var]["log_scale"]
+        lower_tri = log_cholesky_parametrization_to_tril(log_scale, d=loc.shape[0])
         s = mvn_precision_chol_sample(loc=loc, 
                                       precision_matrix_chol=lower_tri, 
                                       key=key, 
@@ -623,12 +629,14 @@ class Bbvi:
         for node in self.graph.prob_traversal_order:
             node_type = self.digraph.nodes[node]["node_type"]
             if node_type == "strong":
+                loc = self.var_params[node]["loc"]
+                lower_tri = log_cholesky_parametrization_to_tril(self.var_params[node]["log_scale"], d=loc.shape[0])
                 self.trans_var_params[node] = {
-                    "loc": self.var_params[node]["loc"],
-                    "cov": jnp.linalg.inv(jnp.dot(self.var_params[node]["lower_tri"], self.var_params[node]["lower_tri"].T))
+                    "loc": loc,
+                    "cov": jnp.linalg.inv(jnp.dot(lower_tri, lower_tri.T))
                 }
                 self.return_loc_params[node] = {
-                    "loc": self.var_params[node]["loc"]
+                    "loc": loc
                 }
 
     def plot_elbo(self):
