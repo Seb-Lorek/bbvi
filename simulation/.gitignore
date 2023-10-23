@@ -1,3 +1,5 @@
 # Ignore the results directory 
-
 results
+
+# Ignore the plots directory 
+plots

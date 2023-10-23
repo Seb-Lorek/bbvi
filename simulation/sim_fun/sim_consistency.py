@@ -8,6 +8,7 @@ import itertools
 import sys
 import os
 import time 
+
 from typing import (
     Union,
     Tuple,
@@ -15,10 +16,10 @@ from typing import (
     Dict,
     Any
 )
+
 from joblib import Parallel, delayed
 
 import numpy as np
-import pandas as pd
 import jax
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax.distributions as tfjd
@@ -45,7 +46,7 @@ def sim_fun(n_sim: int) -> Dict:
         results = process_results(store_result, store_coef)
         sim_results.append(results)
 
-    return sim_results
+    return sim_results, var_grid
 
 # Create the grid of specifications for the simulation
 def create_var_grid(n_sim: int) -> Dict:
@@ -191,7 +192,7 @@ def do_inference(graph, n_obs, key_int):
 def return_target(q, response_dist):
     if response_dist == "normal":
         target = {"loc": q.return_loc_params["beta"]["loc"],
-                  "scale": jnp.exp(q.trans_var_params["sigma"]["loc"] + q.trans_var_params["sigma"]["cov"]**2/2)
+                  "scale": jnp.exp(q.trans_var_params["sigma"]["loc"] + q.trans_var_params["sigma"]["cov"]/2)
                  }
     elif response_dist == "bernoulli":
         target = {"logits": q.return_loc_params["beta"]["loc"]}

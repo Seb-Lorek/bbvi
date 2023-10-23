@@ -184,7 +184,7 @@ graph3 = tiger.ModelGraph(model=m3)
 graph3.build_graph()
 
 # Run the inference
-q1 = bbvi.Bbvi(graph=graph1)
+q1 = bbvi.Bbvi(graph=graph1, jitter_init=False)
 q1.run_bbvi(step_size=0.01,
            threshold=1e-2,
            key_int=keys[0],
@@ -193,7 +193,7 @@ q1.run_bbvi(step_size=0.01,
            chunk_size=50,
            epochs=250)
 
-q2 = bbvi.Bbvi(graph=graph2)
+q2 = bbvi.Bbvi(graph=graph2, jitter_init=False)
 q2.run_bbvi(step_size=0.01,
            threshold=1e-2,
            key_int=keys[1],
@@ -202,7 +202,7 @@ q2.run_bbvi(step_size=0.01,
            chunk_size=50,
            epochs=250)
 
-q3 = bbvi.Bbvi(graph=graph3)
+q3 = bbvi.Bbvi(graph=graph3, jitter_init=False)
 q3.run_bbvi(step_size=0.01,
            threshold=1e-2,
            key_int=keys[2],
@@ -227,16 +227,19 @@ ax.plot(q1.elbo_hist["epoch"],
         q1.elbo_hist["elbo"], 
         alpha = 0.8,
         linewidth=1,
+        color=sns.color_palette("colorblind")[0],
         label="run 1")
 ax.plot(q2.elbo_hist["epoch"], 
         q2.elbo_hist["elbo"], 
         alpha = 0.8, 
         linewidth=1, 
+        color=sns.color_palette("colorblind")[1],
         label="run 2")
 ax.plot(q3.elbo_hist["epoch"], 
         q3.elbo_hist["elbo"], 
         alpha = 0.8, 
         linewidth=1,
+        color=sns.color_palette("colorblind")[2],
         label="run 3")
 ax.legend()
 plt.title("Convergence of ELBO")
@@ -268,7 +271,7 @@ start_time = time.time()
 
 q4 = q1
 
-q5 = bbvi.Bbvi(graph=graph1)
+q5 = bbvi.Bbvi(graph=graph1, jitter_init=False)
 q5.run_bbvi(step_size=0.01,
            threshold=1e-2,
            key_int=keys[3],
@@ -277,7 +280,7 @@ q5.run_bbvi(step_size=0.01,
            chunk_size=50,
            epochs=250)
 
-q6 = bbvi.Bbvi(graph=graph1)
+q6 = bbvi.Bbvi(graph=graph1, jitter_init=False)
 q6.run_bbvi(step_size=0.01,
            threshold=1e-2,
            key_int=keys[4],
@@ -299,16 +302,19 @@ ax.plot(q4.elbo_hist["epoch"],
         q4.elbo_hist["elbo"], 
         alpha = 0.8,
         linewidth=1,
+        color=sns.color_palette("colorblind")[0],
         label="run 1")
 ax.plot(q5.elbo_hist["epoch"], 
         q5.elbo_hist["elbo"], 
         alpha = 0.8, 
         linewidth=1, 
+        color=sns.color_palette("colorblind")[1],
         label="run 2")
 ax.plot(q6.elbo_hist["epoch"], 
         q6.elbo_hist["elbo"], 
         alpha = 0.8, 
         linewidth=1,
+        color=sns.color_palette("colorblind")[2],
         label="run 3")
 ax.legend()
 plt.title("Convergence of ELBO")
