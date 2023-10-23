@@ -21,6 +21,12 @@ if __name__ == "__main__":
 
     # Create the full path to the results data directory
     folder_path = os.path.join(current_directory, safe_path)
+
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+        print(f"Directory '{folder_path}' created successfully.")
+    else:
+        print(f"Directory '{folder_path}' already exists.")
     
     # Run the simulation
     results1 = sim1.sim_fun(n)

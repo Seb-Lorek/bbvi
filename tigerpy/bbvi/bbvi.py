@@ -27,7 +27,7 @@ from typing import (
     Tuple,
     NamedTuple,
     Callable,
-    Union
+    Union,
 )
 
 from .transform import (
@@ -77,12 +77,15 @@ class EpochState(NamedTuple):
 class Bbvi:
     """Inference algorithm."""
 
-    def __init__(self, graph: ModelGraph) -> None:
+    def __init__(self, 
+                 graph: ModelGraph, 
+                 jitter_init: bool=True) -> None:
         self.graph = copy.deepcopy(graph)
         self.digraph = self.graph.digraph
         self.model = self.graph.model
         self.num_obs = self.model.num_obs
         self.data = {}
+        self.jitter_init = jitter_init
         self.init_var_params = {}
         self.var_params = {}
         self.num_var_params = None
@@ -107,7 +110,10 @@ class Bbvi:
             elif node_type == "root":
                 self.data[node] = attr["value"]
 
-    def set_var_params(self, loc_prec: int=1, scale_prec: int=10) -> None:
+    def set_var_params(self, 
+                       key: Union[Any, None]=None, 
+                       loc_prec: float=1.0, 
+                       scale_prec: float=10.0) -> None:
         """
         Method to set the internal variational parameters.
         """
@@ -117,9 +123,14 @@ class Bbvi:
             if node_type == "strong":
                 attr = self.digraph.nodes[node]["attr"]
                 param = self.get_edge_data(node)
-                self.init_var_params[node] = self.start_var_params(attr, param, loc_prec, scale_prec)
+                if not key == None: 
+                    key, subkey = jax.random.split(key)
+                else:
+                    subkey = key
+                self.init_var_params[node] = self.start_var_params(attr, param, subkey, loc_prec, scale_prec)
 
-    def get_edge_data(self, node) -> None:
+    def get_edge_data(self, 
+                      node) -> None:
         """
         Method to obtain the edge data of a child.
         """
@@ -140,37 +151,76 @@ class Bbvi:
         else: 
             return param
 
-    def start_var_params(self, attr: Any, param: str=None, loc_prec: int=1, scale_prec: int=10) -> Dict:
+    def start_var_params(self, 
+                         attr: Any, 
+                         param: str=None, 
+                         key: Union[jax.random.PRNGKey, None]=None, 
+                         loc_prec: float=1.0, 
+                         scale_prec: float=10.0) -> Dict:
         """
         Method to initialize the variational parameters.
 
         Args:
-            attr (Any): Attributes of a parameter node.
+            attr (Any): Attributes of a parameter node in the DAG.
+            param (str, optional): String that defines the scale parameters
+            in distributional regression models. Defaults to None.
+            key (Union[jax.random.PRNGKey, None], optional): Indicate if initalization should apply jitter or not. Defaults to None.
+            loc_prec (float, optional): Diagonal of the precision matrix from the variational distribution for location parameters. Defaults to 1.0.
+            scale_prec (float, optional): Diagonal of the precision matrix from the variational distribution for location parameters. Defaults to 10.0.
 
         Returns:
             Dict: The initial interal variational parameters.
         """
-        
-        if param == "scale":
-            if attr["param_space"] is None:
-                loc = attr["value"]
-                lower_tri = jnp.tril(jnp.diag(jnp.ones(attr["dim"]) * scale_prec))
-                log_scale = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-            elif attr["param_space"] == "positive":
-                loc = jnp.log(attr["value"])
-                lower_tri = jnp.tril(jnp.diag(jnp.ones(attr["dim"]) * scale_prec))
-                log_scale = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-        else:
-            if attr["param_space"] is None:
-                loc = attr["value"]
-                lower_tri = jnp.tril(jnp.diag(jnp.ones(attr["dim"]) * loc_prec))
-                log_scale = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-            elif attr["param_space"] == "positive":
-                loc = jnp.log(attr["value"])
-                lower_tri = jnp.tril(jnp.diag(jnp.ones(attr["dim"]) * loc_prec))
-                log_scale = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
 
-        return {"loc": loc, "log_scale": log_scale}
+        if not key == None:
+            key, *subkeys = jax.random.split(key, 3)
+            if param == "scale":
+                if attr["param_space"] is None:
+                    loc = tfjd.Normal(loc=attr["value"], scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[0])
+                    prec = tfjd.Normal(loc=jnp.repeat(scale_prec, attr["dim"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[1])
+                    lower_tri = jnp.tril(jnp.diag(prec))
+                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
+                elif attr["param_space"] == "positive":
+                    loc = tfjd.Normal(loc=jnp.log(attr["value"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[0])
+                    prec = tfjd.Normal(loc=jnp.repeat(scale_prec, attr["dim"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[1])
+                    lower_tri = jnp.tril(jnp.diag(prec))
+                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
+            else:
+                if attr["param_space"] is None:
+                    loc = tfjd.Normal(loc=attr["value"], scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[0])
+                    prec = tfjd.Normal(loc=jnp.repeat(loc_prec, attr["dim"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[1])
+                    lower_tri = jnp.tril(jnp.diag(prec))
+                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
+                elif attr["param_space"] == "positive":
+                    loc = tfjd.Normal(loc=jnp.log(attr["value"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[0])
+                    prec = tfjd.Normal(loc=jnp.repeat(loc_prec, attr["dim"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[1])
+                    lower_tri = jnp.tril(jnp.diag(prec))
+                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
+        else:
+            if param == "scale":
+                if attr["param_space"] is None:
+                    loc = attr["value"]
+                    prec = jnp.repeat(scale_prec, attr["dim"])
+                    lower_tri = jnp.tril(jnp.diag(prec))
+                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
+                elif attr["param_space"] == "positive":
+                    loc = jnp.log(attr["value"])
+                    prec = jnp.repeat(scale_prec, attr["dim"])
+                    lower_tri = jnp.tril(jnp.diag(prec))
+                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
+            else:
+                if attr["param_space"] is None:
+                    loc = attr["value"]
+                    prec = jnp.repeat(loc_prec, attr["dim"])
+                    lower_tri = jnp.tril(jnp.diag(prec))
+                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
+                elif attr["param_space"] == "positive":
+                    loc = jnp.log(attr["value"])
+                    prec = jnp.repeat(loc_prec, attr["dim"])
+                    lower_tri = jnp.tril(jnp.diag(prec))
+                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
+
+        return {"loc": loc, "log_cholesky_prec": log_cholesky_prec}
 
     def count_var_params(self) -> None:
         """
@@ -180,7 +230,7 @@ class Bbvi:
         num_params = 0
         for item in self.init_var_params.values():
             num_params += item["loc"].shape[0]
-            num_params += item["log_scale"].shape[0]
+            num_params += item["log_cholesky_prec"].shape[0]
         
         self.num_var_params = num_params
 
@@ -396,8 +446,8 @@ class Bbvi:
                              num_var_samples: int,
                              key: jax.random.PRNGKey) -> Tuple[Dict, Array]:
         
-        loc, log_scale = var_params[var]["loc"], var_params[var]["log_scale"]
-        lower_tri = log_cholesky_parametrization_to_tril(log_scale, d=loc.shape[0])
+        loc, log_cholesky_prec = var_params[var]["loc"], var_params[var]["log_cholesky_prec"]
+        lower_tri = log_cholesky_parametrization_to_tril(log_cholesky_prec, d=loc.shape[0])
         s = mvn_precision_chol_sample(loc=loc, 
                                       precision_matrix_chol=lower_tri, 
                                       key=key, 
@@ -417,8 +467,8 @@ class Bbvi:
                                num_var_samples: int,
                                key: jax.random.PRNGKey) -> Tuple[Dict, Array]:
         
-        loc, log_scale = var_params[var]["loc"], var_params[var]["log_scale"]
-        lower_tri = log_cholesky_parametrization_to_tril(log_scale, d=loc.shape[0])
+        loc, log_cholesky_prec = var_params[var]["loc"], var_params[var]["log_cholesky_prec"]
+        lower_tri = log_cholesky_parametrization_to_tril(log_cholesky_prec, d=loc.shape[0])
         s = mvn_precision_chol_sample(loc=loc, 
                                       precision_matrix_chol=lower_tri, 
                                       key=key, 
@@ -598,7 +648,10 @@ class Bbvi:
             return new_state, elbo_chunk
 
         key = jax.random.PRNGKey(key_int)
-        
+        if self.jitter_init:
+            key, subkey = jax.random.split(key)
+            self.set_var_params(key=subkey)
+
         epoch_state = EpochState(self.data,
                                  jnp.array(-jnp.inf),
                                  self.init_var_params,
@@ -630,7 +683,7 @@ class Bbvi:
             node_type = self.digraph.nodes[node]["node_type"]
             if node_type == "strong":
                 loc = self.var_params[node]["loc"]
-                lower_tri = log_cholesky_parametrization_to_tril(self.var_params[node]["log_scale"], d=loc.shape[0])
+                lower_tri = log_cholesky_parametrization_to_tril(self.var_params[node]["log_cholesky_prec"], d=loc.shape[0])
                 self.trans_var_params[node] = {
                     "loc": loc,
                     "cov": jnp.linalg.inv(jnp.dot(lower_tri, lower_tri.T))
