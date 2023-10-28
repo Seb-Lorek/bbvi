@@ -3,11 +3,16 @@ Tiger model.
 """
 
 import jax.numpy as jnp
+import jax 
 
 import tensorflow_probability.substrates.jax.distributions as tfjd
 import tensorflow_probability.substrates.numpy.distributions as tfnd
 
-from typing import Any, Union
+from typing import (
+    Any, 
+    Union,
+    Callable
+)
 
 Array = Any
 Distribution = Union[tfjd.Distribution, tfnd.Distribution]
@@ -34,8 +39,6 @@ class Dist:
     def __init__(self, distribution: Distribution, **kwinputs: Any):
         self.distribution = distribution
         self.kwinputs = kwinputs
-        self.additional_params = {kw: item for kw, item in self.kwinputs.items()
-                             if not isinstance(item, (Hyper, Param, Lpred))} or None
 
     def init_dist(self) -> Distribution:
         """
@@ -46,7 +49,7 @@ class Dist:
             Distribution: A initialized tensorflow probability distribution.
         """
 
-        kwargs = {kw: item.value if isinstance(item, (Hyper, Param, Lpred)) else item for kw, item in self.kwinputs.items()}
+        kwargs = {kw: item.value for kw, item in self.kwinputs.items()}
         dist = self.distribution(**kwargs)
         return dist
 
@@ -71,9 +74,9 @@ class Param:
         self.param_space = param_space
         self.name = name
         self.dim = self.value.shape[0]
-        self.log_prior = self.logprior(value=self.value)
+        self.log_prior = self.logprior()
 
-    def logprior(self, value: Array) -> Array:
+    def logprior(self) -> jax.Array:
         """
         Method to calculate the log-probability of the class Param.
 
@@ -84,7 +87,7 @@ class Param:
             Array: A log-probability.
         """
 
-        log_prior = self.distribution.init_dist().log_prob(value)
+        log_prior = self.distribution.init_dist().log_prob(self.value)
 
         return log_prior
 
@@ -93,7 +96,7 @@ class Lpred:
     Linear predictor.
     """
 
-    def __init__(self, obs: Obs, function: Any=None, **kwinputs: Any):
+    def __init__(self, obs: Obs, function: Union[Callable, None]=None, **kwinputs: Any):
         self.obs = obs
         self.function = function
         self.kwinputs = kwinputs
@@ -101,13 +104,13 @@ class Lpred:
         self.params_values = self.update_params()
         self.value = self.update_lpred()
 
-    def update_params(self) -> Array:
+    def update_params(self) -> jax.Array:
         """
         Method to update attribute params_values by obtaining all values of
         class Params in class Lpred.
 
         Returns:
-            Array: Array of all values of class Params in class Lpred.
+            jax.Array: Array of all values of class Params in class Lpred.
         """
 
         arrays = []
@@ -118,23 +121,23 @@ class Lpred:
 
         return params
 
-    def update_lpred(self) -> Array:
+    def update_lpred(self) -> jax.Array:
         """
         Method to update the attribute value by calculating the linear predictor
-        and potentially applied an inverse link function (bijetor).
+        and potentially apply an inverse link function (bijetor).
 
         Returns:
-            Array: Value of the linear predictor.
+            jax.Array: Values of the linear predictor.
         """
 
         nu = jnp.dot(self.design_matrix, self.params_values)
 
         if self.function is not None:
-            m = self.function(nu)
+            transformed = self.function(nu)
         else:
-            m = nu
+            transformed = nu
 
-        return m
+        return transformed
 
 class Model:
     """
@@ -150,7 +153,7 @@ class Model:
         self.num_param = self.count_param_instances(self.response_dist)
         self.num_obs = self.response.shape[0]
 
-    def loglik(self) -> Array:
+    def loglik(self) -> jax.Array:
         """
         Method to calculate the log-likelihood of the model.
 
@@ -162,12 +165,12 @@ class Model:
 
         return log_lik
 
-    def logprior(self) -> Array:
+    def logprior(self) -> jax.Array:
         """
-        Compute the log-prior of the model, i.e. the log-pdf of the priors.
+        Compute the log-prior of the model, i.e. the log-pdf of all priors in the model.
 
         Returns:
-            Array: Log-prior of the model.
+            jax.Array: Log-prior of the model.
         """
 
         prior_list = self.return_param_logpriors(self.response_dist)
@@ -175,12 +178,12 @@ class Model:
         
         return jnp.sum(log_prior)
 
-    def logprob(self) -> Array:
+    def logprob(self) -> jax.Array:
         """
         Method to calculate the log-probability of the model, i.e. the sum of log-likelihood and log-prior.
 
         Returns:
-            Array: Log-probability of the model.
+            jax.Array: Log-probability of the model.
         """
 
         return jnp.sum(self.log_lik) + self.log_prior
@@ -191,7 +194,7 @@ class Model:
         recursive structure.
 
         Args:
-            obj (Any): Class distribution of the response (nested class structure).
+            obj (Any): Classes of the stacked model (nested class structure).
 
         Returns:
             list: Return a list with all log-probabilities.
@@ -205,11 +208,9 @@ class Model:
         if isinstance(obj, (list, tuple)):
             for item in obj:
                 log_priors.extend(self.return_param_logpriors(item))
-
         elif isinstance(obj, dict):
             for value in obj.values():
                 log_priors.extend(self.return_param_logpriors(value))
-
         elif hasattr(obj, "__dict__"):
             log_priors.extend(self.return_param_logpriors(obj.__dict__))
 
@@ -234,11 +235,9 @@ class Model:
         if isinstance(obj, (list, tuple)):
             for item in obj:
                count += self.count_param_instances(item)
-
         elif isinstance(obj, dict):
             for value in obj.values():
                 count += self.count_param_instances(value)
-
         elif hasattr(obj, "__dict__"):
             count += self.count_param_instances(obj.__dict__)
 

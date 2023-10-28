@@ -4,23 +4,18 @@ Black-box variational inference.
 
 import jax
 import jax.numpy as jnp
-
 import numpy as np
-
 import optax
 
 import tensorflow_probability.substrates.jax.distributions as tfjd
 import tensorflow_probability.substrates.numpy.distributions as tfnd
 
-import matplotlib.pyplot as plt
 
 import networkx as nx
-
+import matplotlib.pyplot as plt
 import functools
 from functools import partial
-
 import copy
-
 from typing import (
     List,
     Dict,
@@ -45,13 +40,17 @@ from ..model.model import (
 )
 
 from ..model.nodes import (
-    ModelGraph
+    ModelGraph,
 )
 
 from ..distributions.mvn import (
     mvn_precision_chol_log_prob,
     mvn_precision_chol_sample,
     solve_chol
+)
+
+from .init_bbvi import (
+    set_init_var_params
 )
 
 class BbviState(NamedTuple):
@@ -65,7 +64,7 @@ class BbviState(NamedTuple):
     elbo: Array
 
 class EpochState(NamedTuple):
-    data: Dict
+    data: dict
     elbo_best: Array
     params_best: dict
     key: jax.random.PRNGKey
@@ -75,7 +74,9 @@ class EpochState(NamedTuple):
 
 
 class Bbvi:
-    """Inference algorithm."""
+    """
+    Inference algorithm.
+    """
 
     def __init__(self, 
                  graph: ModelGraph, 
@@ -99,7 +100,7 @@ class Bbvi:
 
     def set_data(self) -> None:
         """
-        Method to gather the data from the tree.
+        Method to gather the data (fixed node values and the response node value) from the DAG.
         """
 
         for node in self.graph.traversal_order:
@@ -111,8 +112,7 @@ class Bbvi:
                 self.data[node] = attr["value"]
 
     def set_var_params(self, 
-                       key: Union[Any, None]=None, 
-                       loc_prec: float=1.0, 
+                       key: Union[jax.random.PRNGKey, None]=None, 
                        scale_prec: float=10.0) -> None:
         """
         Method to set the internal variational parameters.
@@ -122,105 +122,11 @@ class Bbvi:
             node_type = self.digraph.nodes[node]["node_type"]
             if node_type == "strong":
                 attr = self.digraph.nodes[node]["attr"]
-                param = self.get_edge_data(node)
-                if not key == None: 
-                    key, subkey = jax.random.split(key)
-                else:
-                    subkey = key
-                self.init_var_params[node] = self.start_var_params(attr, param, subkey, loc_prec, scale_prec)
-
-    def get_edge_data(self, 
-                      node) -> None:
-        """
-        Method to obtain the edge data of a child.
-        """
-
-        childs = list(self.digraph.successors(node))
-        if childs:
-            child = childs[0]
-            edge = self.digraph.get_edge_data(node, child)
-            param = edge["role"]
-        else: 
-            child = node
-            param = None
-
-        if param in ["scale"]:
-            return param
-        elif self.digraph.nodes[child]["node_type"] != "root":
-            return self.get_edge_data(child)
-        else: 
-            return param
-
-    def start_var_params(self, 
-                         attr: Any, 
-                         param: str=None, 
-                         key: Union[jax.random.PRNGKey, None]=None, 
-                         loc_prec: float=1.0, 
-                         scale_prec: float=10.0) -> Dict:
-        """
-        Method to initialize the variational parameters.
-
-        Args:
-            attr (Any): Attributes of a parameter node in the DAG.
-            param (str, optional): String that defines the scale parameters
-            in distributional regression models. Defaults to None.
-            key (Union[jax.random.PRNGKey, None], optional): Indicate if initalization should apply jitter or not. Defaults to None.
-            loc_prec (float, optional): Diagonal of the precision matrix from the variational distribution for location parameters. Defaults to 1.0.
-            scale_prec (float, optional): Diagonal of the precision matrix from the variational distribution for location parameters. Defaults to 10.0.
-
-        Returns:
-            Dict: The initial interal variational parameters.
-        """
-
-        if not key == None:
-            key, *subkeys = jax.random.split(key, 3)
-            if param == "scale":
-                if attr["param_space"] is None:
-                    loc = tfjd.Normal(loc=attr["value"], scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[0])
-                    prec = tfjd.Normal(loc=jnp.repeat(scale_prec, attr["dim"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[1])
-                    lower_tri = jnp.tril(jnp.diag(prec))
-                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-                elif attr["param_space"] == "positive":
-                    loc = tfjd.Normal(loc=jnp.log(attr["value"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[0])
-                    prec = tfjd.Normal(loc=jnp.repeat(scale_prec, attr["dim"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[1])
-                    lower_tri = jnp.tril(jnp.diag(prec))
-                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-            else:
-                if attr["param_space"] is None:
-                    loc = tfjd.Normal(loc=attr["value"], scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[0])
-                    prec = tfjd.Normal(loc=jnp.repeat(loc_prec, attr["dim"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[1])
-                    lower_tri = jnp.tril(jnp.diag(prec))
-                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-                elif attr["param_space"] == "positive":
-                    loc = tfjd.Normal(loc=jnp.log(attr["value"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[0])
-                    prec = tfjd.Normal(loc=jnp.repeat(loc_prec, attr["dim"]), scale=jnp.array([0.01])).sample(sample_shape=(), seed=subkeys[1])
-                    lower_tri = jnp.tril(jnp.diag(prec))
-                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-        else:
-            if param == "scale":
-                if attr["param_space"] is None:
-                    loc = attr["value"]
-                    prec = jnp.repeat(scale_prec, attr["dim"])
-                    lower_tri = jnp.tril(jnp.diag(prec))
-                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-                elif attr["param_space"] == "positive":
-                    loc = jnp.log(attr["value"])
-                    prec = jnp.repeat(scale_prec, attr["dim"])
-                    lower_tri = jnp.tril(jnp.diag(prec))
-                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-            else:
-                if attr["param_space"] is None:
-                    loc = attr["value"]
-                    prec = jnp.repeat(loc_prec, attr["dim"])
-                    lower_tri = jnp.tril(jnp.diag(prec))
-                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-                elif attr["param_space"] == "positive":
-                    loc = jnp.log(attr["value"])
-                    prec = jnp.repeat(loc_prec, attr["dim"])
-                    lower_tri = jnp.tril(jnp.diag(prec))
-                    log_cholesky_prec = log_cholesky_parametrization(lower_tri, d=lower_tri.shape[0])
-
-        return {"loc": loc, "log_cholesky_prec": log_cholesky_prec}
+                param_response = self.graph.response_param_member(node)
+                self.init_var_params[node] = set_init_var_params(attr, 
+                                                                 param_response, 
+                                                                 key, 
+                                                                 scale_prec)
 
     def count_var_params(self) -> None:
         """
@@ -235,18 +141,20 @@ class Bbvi:
         self.num_var_params = num_params
 
     @staticmethod
-    def calc_lpred(design_matrix: Array, 
-                   params: dict,
-                   bijector: Any) -> Array:
+    def calc_lpred(design_matrix: jax.Array, 
+                   params: Dict,
+                   bijector: Callable) -> jax.Array:
         """
-        Method to calculate the linear predictor.
+        Method to calculate the values for a linear predictor.
 
         Args:
-            design_matrix (Dict): Array that contains a design matrix to calculate the linear predictor.
-            Input (Dict): Input dict for the node, containing the variational samples.
+            design_matrix (Dict): jax.Array that contains a design matrix to calculate the linear predictor.
+            params (Dict): Parameters of the linear predictor in a dictionary using new variational samples.
+            bijector (Callable): The inverse link function that transform the linear predictor 
+            to the appropriate parameter space.
 
         Returns:
-            Array: the linear predictor at the new variational samples.
+            jax.Array: The linear predictor at the new variational samples.
         """
 
         batch_design_matrix = jnp.expand_dims(design_matrix, axis=0)
@@ -263,13 +171,13 @@ class Bbvi:
         return transformed
 
     @staticmethod
-    def calc_scaled_loglik(log_lik: Array,
-                           num_obs: int) -> Array:
+    def calc_scaled_loglik(log_lik: jax.Array,
+                           num_obs: int) -> jax.Array:
         """
-        Caluclate the scaled log-lik.
+        Method to caluclate the scaled log-lik.
 
         Args:
-            log_lik (Array): Log-likelihood of the model.
+            log_lik (jax.Array): Log-likelihood of the model.
             num_obs (int): Number of observations in the model
 
         Returns:
@@ -282,82 +190,77 @@ class Bbvi:
     
     @staticmethod
     def init_dist(dist: Distribution,
-                  params: dict,
-                  additional_params: Union[dict, None]=None) -> Distribution:
+                  params: dict) -> Distribution:
         """
-        Method to initialize the probability distribution of a strong node (node with a probability distribution).
+        Method to initialize the probability distribution of a strong node.
 
         Args:
             dist (Distribution): A tensorflow probability distribution.
             params (dict): Key, value pair, where keys should match the names of the parameters of
             the distribution.
-            additional_params (dict): Additional parameters of a distribution, currently
-            implemented to store the penalty matrices for the MultivariateNormalDegenerate
-            distribution.
 
         Returns:
             Distribution: A initialized tensorflow probability distribution.
         """
 
-        if additional_params is None:
-            initialized_dist = dist(**params)
-        else:
-            initialized_dist = dist(**params, **additional_params)
+        initialized_dist = dist(**params)
 
         return initialized_dist
 
     @staticmethod
-    def logprior(dist: Distribution, value: Array) -> Array:
+    def logprior(dist: Distribution, value: jax.Array) -> jax.Array:
         """
         Method to calculate the log-prior probability of a parameter node (strong node).
 
         Args:
             dist (Distribution): A initialized tensorflow probability distribution.
-            value (Array): Value of the parameter.
+            value (jax.Array): Value of the parameter.
 
         Returns:
-            Array: Prior log-probabilities of the parameters.
+            jax.Array: Prior log-probabilities of the parameters.
         """
 
         return dist.log_prob(value)
 
     @staticmethod
     def loglik(dist: Distribution,
-               value: Array) -> Array:
+               value: jax.Array) -> jax.Array:
         """
         Method to calculate the log-likelihood of the response (root node).
 
         Args:
             dist (Distribution): A initialized tensorflow probability distribution.
-            value (Array): Values of the response.
+            value (jax.Array): Values of the response.
 
         Returns:
-            Array: Log-likelihood of the response.
+            jax.Array: Log-likelihood of the response.
         """
 
         return dist.log_prob(value)
 
     def mc_logprob(self, 
-                   batch_data: dict,
-                   samples: dict,
-                   num_obs: int) -> Array:
+                   batch_data: Dict,
+                   samples: Dict,
+                   num_obs: int) -> jax.Array:
         """
         Calculate the Monte Carlo integral for the joint log-probability of the model.
 
         Args:
-            batch_data (dict): A subsample of the data (mini-batch).
-            samples (dict): Samples from the variational distribution.
-            num_var_samples(int): Number of samples from the variational distribution.
+            batch_data (Dict): A subsample of the data (mini-batch).
+            samples (Dict): Samples from the variational distribution.
+            num_obs (int): Number of observations in the model.
 
         Returns:
-            Array: Monte carlo integral for the noisy log-probability of the model. We only use a subsample
+            jax.Array: Monte carlo integral for the noisy log-probability of the model. We only use a subsample
             of the data.
         """
 
-        # Safe intermediary computations
-        input = {}
+        # Safe intermediary computations in the model_state
+        model_state = {}
+
         # Safe all log priors 
         # Maybe explicity define shape log-priors via num_var_samples
+        # However gets recast correctly 
         log_priors = jnp.array([0.0])
 
         # Acess global variables but don't modify them 
@@ -366,24 +269,24 @@ class Bbvi:
             attr = self.digraph.nodes[node]["attr"]
             childs = list(self.digraph.successors(node))
             parents = list(self.digraph.predecessors(node))
+            # Linear predictor node 
             if node_type == "lpred":
                 for parent in parents:
                     edge = self.digraph.get_edge_data(parent, node)
                     if edge["role"] == "fixed":
                         design_matrix = batch_data[parent]
-                        # print("Design_matrix:", node, design_matrix.shape)
                         parents.remove(parent)
 
-                # Obtain all parameters of the linear predictor node
-                # Be careful of the order here !!
+                # Obtain all parameters of the linear predictor node must be defined in the 
+                # right order 
                 params = {kw: samples[kw] for kw in parents}
-                # print(params)
+               
                 # Calculate the linear predictor with the new samples
                 lpred_val = Bbvi.calc_lpred(design_matrix, 
-                                        params,
-                                        attr["bijector"])
-                # print("Lpred:", node, lpred_val.shape)
-                input[node] = lpred_val            
+                                            params,
+                                            attr["bijector"])
+                model_state[node] = lpred_val   
+            # Strong node          
             elif node_type == "strong":
                 if self.digraph.nodes[node]["input_fixed"]:
                     log_prior = Bbvi.logprior(attr["dist"], 
@@ -394,28 +297,25 @@ class Bbvi:
                     for parent in parents:
                         if self.digraph.nodes[parent]["node_type"] == "hyper":
                             edge = self.digraph.get_edge_data(parent, node)
-                            params[edge["role"]] = self.digraph.nodes[node]["attr"]["value"]
-                        
+                            params[edge["role"]] = self.digraph.nodes[parent]["attr"]["value"]
                         elif self.digraph.nodes[parent]["node_type"] == "strong":
                             edge = self.digraph.get_edge_data(parent, node)
-                            params[edge["role"]] = input[parent]
-
+                            params[edge["role"]] = model_state[parent]
                     init_dist = Bbvi.init_dist(dist=attr["dist"], 
-                                               params=params,
-                                               additional_params=attr["additional_params"])
-                    
+                                               params=params)
                     log_prior = Bbvi.logprior(init_dist, 
                                               samples[node])
-
+                # Sum log-priors of a strong node
                 if log_prior.ndim == 2:
                     log_prior = jnp.sum(log_prior, axis=-1)
                 log_priors += log_prior
-                input[node] = samples[node]
+                model_state[node] = samples[node]
+            # Root node 
             elif node_type == "root":
                 params = {}
                 for parent in parents:
                         edge = self.digraph.get_edge_data(parent, node)
-                        params[edge["role"]] = input[parent]
+                        params[edge["role"]] = model_state[parent]
 
                 # replace the scale coefficients just with a one 
                 # print("Scale-mean", params["scale"], params["scale"].shape)
@@ -424,7 +324,8 @@ class Bbvi:
                 # Write function that initializes the dist with new values
                 init_dist = Bbvi.init_dist(dist=attr["dist"],
                                            params=params)
-                # print(init_dist)
+                # print("Response dist:", init_dist)
+
                 # Calculate the log_lik
                 log_lik = Bbvi.loglik(init_dist, 
                                       batch_data[node])
@@ -502,7 +403,6 @@ class Bbvi:
         """
 
         key, *subkeys = jax.random.split(key, len(var_params)+1)
-        # Define samples here or pass from the top ?
         samples = {}
         total_neg_entropy = jnp.array([])
         i = 0
@@ -523,7 +423,7 @@ class Bbvi:
                 total_neg_entropy = jnp.append(total_neg_entropy, neg_entropy, axis=0)
             
             i += 1
-        # print(samples["tau"], samples["eta"])
+        # print(samples["tau2"], samples["eta2"])
         # print(total_neg_entropy)
         mc_log_prob = self.mc_logprob(batch_data, samples, num_obs)
         elbo = mc_log_prob - jnp.sum(total_neg_entropy)

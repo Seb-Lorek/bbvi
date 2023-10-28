@@ -1,18 +1,17 @@
 """
-Model matrices.
+Design matrices.
 """
 
 import numpy as np
 from scipy.interpolate import BSpline as bs
 
 from .model import (
-    Array,
-    Any
+    Array
 )
 
 class Obs:
     """
-    Observations.
+    Class to create design matrices for a linear predictor.
     """
     def __init__(self, name: str, intercept: bool = True):
         self.name = name
@@ -33,7 +32,8 @@ class Obs:
         Method to define the fixed covariates.
 
         Args:
-            data (Array): Array that contains the fixed covariates (excluding the intercept).
+            data (Array): An array like object, that can be transformed to an np.ndarray,
+            containing the fixed covariates (excluding the intercept).
             data_copy (bool, optional): Should the array be copied. Defaults to True.
         """
 
@@ -42,28 +42,28 @@ class Obs:
         if type(data) is not np.array:
             data = np.asarray(data, dtype=np.float32)
 
-        if self.data_copy:
+        if self.data_copy is True:
             self.fixed_data = data.copy()
         else:
             self.fixed_data = data
 
-        if self.intercept:
-            self.fixed_data = np.column_stack((np.ones(len(self.fixed_data)), self.fixed_data))
+        if self.intercept is True:
+            self.fixed_data = np.column_stack((np.ones(self.fixed_data.shape[0]), self.fixed_data))
 
         if self.design_matrix is None:
-            self.design_matrix = np.asarray(self.fixed_data, dtype=np.float32)
+            self.design_matrix = self.fixed_data
             self.fixed_dim = self.fixed_data.shape[1]
             self.fixed_incl = True
         else:
-            print("Design-Matrix contains already smooth terms")
+            print("Design matrix contains already smooth terms")
             raise ValueError("Fixed covariate effects must be defined first.")
 
-    def smooth(self, data: Array, n_knots=20, degree=3, rwk=2) -> None:
+    def smooth(self, data: np.ndarray, n_knots: int=20, degree: int=3, rwk: int=2) -> None:
         """
-        Method to define smooth B-Spline effects.
+        Method to define smooth effects via the B-Spline basis.
 
         Args:
-            data (Array): 1D-Array that contains a covariate.
+            data (np.ndarray): 1-D np.ndarray that contains a covariate.
             n_knots (int, optional): Number of knots. Defaults to 20.
             degree (int, optional): The degree of the B-spline. Defaults to 3 (cubic).
             rwk (int, optional): Random walk order that defines the penalisation of the coefficients. Defaults to 2 (second order).
@@ -96,7 +96,7 @@ class Obs:
             if self.smooth_incl is None:
                 self.smooth_incl = True
 
-    def center(self) -> Array:
+    def center(self) -> np.ndarray:
         if self.smooth_incl is True and self.fixed_incl is True:
             fixed = np.asarray(self.fixed_data, dtype=np.float32)
             self.design_mat_cent= [fixed]
@@ -123,7 +123,7 @@ class Obs:
             self.design_matrix = np.concatenate(self.design_mat_cent, axis=1)
         else:
             print("No need to include identifiability constraints.")
-            raise ValueError("The model must at least contain one fixed parameter in combination with a smooth effect.")
+            raise ValueError("The model must contain at least one fixed parameter in combination with a smooth effect.")
 
 # https://stats.stackexchange.com/questions/517375/splines-relationship-of-knots-degree-and-degrees-of-freedom
 # For the identification constraints (sum to zero constrain) check Generalized Additive Models, An introduction with R, Simon N. Wood, page 175 and 211

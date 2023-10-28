@@ -2,17 +2,19 @@
 Directed graph.
 """
 
-import networkx as nx
-
 import jax.numpy as jnp
+import jax 
+
+import networkx as nx
 
 import matplotlib.pyplot as plt
 
 import re
-
 import copy
-
-from typing import Any, Union
+from typing import (
+    Any,
+    Union
+)
 
 from .model import (
     Model,
@@ -26,9 +28,12 @@ from .model import (
 )
 
 class ModelGraph:
-    """Class to build a DAG."""
+    """
+    Class to build a DAG.
+    """
 
-    def __init__(self, model: Model):
+    def __init__(self, 
+                 model: Model):
         self.digraph = nx.DiGraph()
         self.model = model
         self.traversal_order = None
@@ -48,7 +53,9 @@ class ModelGraph:
         self.digraph.nodes["response"]["node_type"] = "root"
         self.digraph.nodes["response"]["input"] = {}
 
-    def add_strong_node(self, name: str, param: Param) -> None:
+    def add_strong_node(self, 
+                        name: str, 
+                        param: Param) -> None:
         """
         Method to add a strong node to the DAG. Strong nodes have a probability distribution.
 
@@ -61,7 +68,6 @@ class ModelGraph:
                 "dim": param.dim,
                 "param_space": param.param_space,
                 "dist": param.distribution.get_dist(),
-                "additional_params": param.distribution.additional_params,
                 "log_prior": param.log_prior}
         self.digraph.add_node(name, attr=attr)
         self.digraph.nodes[name]["node_type"] = "strong"
@@ -84,7 +90,9 @@ class ModelGraph:
         self.digraph.nodes[name]["node_type"] = "lpred"
         self.digraph.nodes[name]["input"] = {}
 
-    def add_fixed_node(self, name: str, obs: Obs) -> None:
+    def add_fixed_node(self, 
+                       name: str, 
+                       obs: Obs) -> None:
         """
         Method to add a fixed node to the DAG. Fixed nodes contain design matrices.
 
@@ -112,8 +120,7 @@ class ModelGraph:
 
     def init_dist(self,
                   dist: Distribution,
-                  params: dict,
-                  additional_params: Union[dict, None]=None) -> Distribution:
+                  params: dict) -> Distribution:
         """
         Method to initialize the probability distribution of a strong node (node with a probability distribution).
 
@@ -121,18 +128,12 @@ class ModelGraph:
             dist (Distribution): A tensorflow probability distribution.
             params (dict): Key, value pair, where keys should match the names of the parameters of
             the distribution.
-            additional_params (dict): Additional parameters of a distribution, currently
-            implemented to store the penalty matrices for the MultivariateNormalDegenerate
-            distribution.
 
         Returns:
             Distribution: A initialized tensorflow probability distribution.
         """
 
-        if additional_params is None:
-            initialized_dist = dist(**params)
-        else:
-            initialized_dist = dist(**params, **additional_params)
+        initialized_dist = dist(**params)
 
         return initialized_dist
 
@@ -163,7 +164,9 @@ class ModelGraph:
             if node_type in ["strong", "root"]:
                 self.prob_traversal_order.append(node)
 
-    def update_lpred(self, node: str, attr: dict) -> Array:
+    def update_lpred(self, 
+                     node: str, 
+                     attr: dict) -> Array:
         """
         Method to calculate the value of a linear predictor node.
 
@@ -188,55 +191,57 @@ class ModelGraph:
 
         return transformed
 
-    def logprior(self, dist: Distribution, value: Array) -> Array:
+    def logprior(self, 
+                 dist: Distribution, 
+                 value: jax.Array) -> jax.Array:
         """
         Method to calculate the log-prior probability of a parameter node (strong node).
 
         Args:
             dist (Distribution): A initialized tensorflow probability distribution.
-            value (Array): Value of the parameter.
+            value (jax.Array): Value of the parameter.
 
         Returns:
-            Array: Prior log-probabilities of the parameters.
+            jax.Array: Prior log-probabilities of the parameters.
         """
 
         return dist.log_prob(value)
 
     def loglik(self,
                dist: Distribution,
-               value: Array) -> Array:
+               value: jax.Array) -> jax.Array:
         """
         Method to calculate the log-likelihood of the response (root node).
 
         Args:
             dist (Distribution): A initialized tensorflow probability distribution.
-            value (Array): Values of the response.
+            value (jax.Array): Values of the response.
 
         Returns:
-            Array: Log-likelihood of the response.
+            jax.Array: Log-likelihood of the response.
         """
 
         return dist.log_prob(value)
 
-    def collect_logpriors(self) -> Array:
+    def sum_logpriors(self) -> jax.Array:
         """
         Method to sum all the prior log-probabilities of the DAG, i.e. collect them 
         from the strong nodes.
 
         Returns:
-            Array: The sum of all prior log-probabilities.
+            jax.Array: The sum of all prior log-probabilities.
         """
 
         log_prior_sum = jnp.array(0.0, dtype=jnp.float32)
-
+        
         for node in self.prob_traversal_order:
             node_type = self.digraph.nodes[node]["node_type"]
 
             if node_type == "strong":
                 log_prior = self.digraph.nodes[node]["attr"].get("log_prior", 0.0)
-                log_prior_sum += log_prior
+                log_prior_sum += jnp.sum(log_prior)
 
-        return jnp.squeeze(log_prior_sum)
+        return log_prior_sum
 
     def logprob(self) -> Array:
         """
@@ -245,16 +250,12 @@ class ModelGraph:
 
         log_prob = jnp.array(0.0, dtype=jnp.float32)
 
-        for node in self.prob_traversal_order:
-            node_type = self.digraph.nodes[node]["node_type"]
-            if node_type == "strong":
-                log_prior = self.digraph.nodes[node]["attr"].get("log_prior", 0.0)
-                log_prior = jnp.sum(log_prior)
-                log_prob += log_prior
-            elif node_type == "root":
-                log_lik = self.digraph.nodes[node]["attr"].get("log_lik", 0.0)
-                log_lik = jnp.sum(log_lik)
-                log_prob += log_lik
+        log_prior = self.sum_logpriors()
+        log_prob += log_prior
+
+        log_lik = self.digraph.nodes["response"]["attr"].get("log_lik", 0.0)
+        log_lik = jnp.sum(log_lik)
+        log_prob += log_lik
 
         return log_prob
 
@@ -269,7 +270,7 @@ class ModelGraph:
         of the DAG.
 
         Args:
-            obj (Any): Classes of `model.py` i.e. Hyper, Param, Lpred.
+            obj (Any): Classes Hyper, Param and Lpred of tigerpy.model.model.
             child_node (str): Name of the child node.
             param_name (str): Name of the current node/Parameter name in a distribution.
             params (dict): Dictionary that gets filled with the initial supplied
@@ -278,24 +279,34 @@ class ModelGraph:
 
         if isinstance(obj, Lpred):
             node_name = param_name
-            self.add_lpred_node(name=node_name, lpred=obj)
-            self.digraph.add_edge(node_name, child_node, role=param_name,
+            self.add_lpred_node(name=node_name, 
+                                lpred=obj)
+            self.digraph.add_edge(node_name, 
+                                  child_node, 
+                                  role=param_name,
                                   bijector=obj.function)
             name_fixed = obj.obs.name
-            self.add_fixed_node(name=name_fixed, obs=obj.obs)
-            self.digraph.add_edge(name_fixed, node_name, role="fixed")
-
+            self.add_fixed_node(name=name_fixed, 
+                                obs=obj.obs)
+            self.digraph.add_edge(name_fixed, 
+                                  node_name, 
+                                  role="fixed")
         elif isinstance(obj, Param):
             node_name = obj.name
-            self.add_strong_node(name=node_name, param=obj)
-            self.digraph.add_edge(node_name, child_node, role=param_name)
+            self.add_strong_node(name=node_name, 
+                                 param=obj)
+            self.digraph.add_edge(node_name, 
+                                  child_node, 
+                                  role=param_name)
             params[node_name] = obj.value
             param_name = node_name
-
         elif isinstance(obj, Hyper):
             node_name = obj.name
-            self.add_hyper_node(name=node_name, hyper=obj)
-            self.digraph.add_edge(node_name, child_node, role=param_name)
+            self.add_hyper_node(name=node_name, 
+                                hyper=obj)
+            self.digraph.add_edge(node_name, 
+                                  child_node, 
+                                  role=param_name)
             param_name = node_name
 
         if isinstance(obj, (list, tuple)):
@@ -304,14 +315,12 @@ class ModelGraph:
                                            child_node=child_node,
                                            param_name=param_name,
                                            params=params)
-
-        if isinstance(obj, dict):
+        elif isinstance(obj, dict):
             for key, value in obj.items():
                 self.build_graph_recursive(obj=value,
                                            child_node=param_name,
                                            param_name=key,
                                            params=params)
-
         elif hasattr(obj, "__dict__"):
             for value in obj.__dict__.values():
                 self.build_graph_recursive(obj=value,
@@ -369,12 +378,10 @@ class ModelGraph:
                 # If all inputs are fixed we need to initialize the probabiltiy distribution only onces.
                 if self.digraph.nodes[node]["input_fixed"]:
                     attr["dist"] = self.init_dist(dist=attr["dist"],
-                                                  params=self.digraph.nodes[node]["input"],
-                                                  additional_params=attr["additional_params"])
+                                                  params=self.digraph.nodes[node]["input"])
                 else:
                     init_dist = self.init_dist(dist=attr["dist"],
-                                               params=self.digraph.nodes[node]["input"],
-                                               additional_params=attr["additional_params"])
+                                               params=self.digraph.nodes[node]["input"])
                     attr["log_prior"] = self.logprior(init_dist, attr["value"])
 
                 input_pass = attr["value"]
@@ -414,7 +421,39 @@ class ModelGraph:
         # Initialize the full graph once
         self.init_graph(params)
 
+        # store the values of the parameters 
         self.params = params
+
+    def response_param_member(self, 
+                              node: str) -> str:
+        """
+        Method to obtain the information to which parameter of the response the 
+        paramter block belongs. 
+
+        Args:
+            node (str): Name of the node. 
+
+        Returns:
+            str: Return the parameter of the response to which the parameter
+            block in the model belongs to.
+        """
+
+
+        childs = list(self.digraph.successors(node))
+        if childs:
+            child = childs[0]
+            edge = self.digraph.get_edge_data(node, child)
+            param = edge["role"]
+        else: 
+            child = node
+            param = None
+
+        if param in ["scale"]:
+            return param
+        elif self.digraph.nodes[child]["node_type"] != "root":
+            return self.response_param_member(child)
+        else: 
+            return param
 
     def visualize_graph(self) -> None:
         """
@@ -443,7 +482,7 @@ class ModelGraph:
         def calculate_font_size(graph):
             num_nodes = len(graph.nodes)
             base_font_size = 12  # Initial font size
-            scaling_factor = 0.2  # Adjust this factor based on your preference
+            scaling_factor = 0.25  # Adjust this factor based on your preference
             return round(base_font_size - scaling_factor * num_nodes)
         
         def calculate_node_size(graph):

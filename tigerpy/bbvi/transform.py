@@ -29,6 +29,7 @@ def jac_determinant(f, x):
 batched_jac_determinant = vmap(jac_determinant, (None, 0))
 
 # Note: while being general this is not efficient for complicated Jacobians
+# Leave it for the moment at this implementation
 
 # Use the unique definition of the Cholesky decomposition
 def fill_lower_diag(log_vec_L: Array, d: int) -> Array:
