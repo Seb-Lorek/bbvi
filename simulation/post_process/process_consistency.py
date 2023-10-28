@@ -13,6 +13,32 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+def check_missing_data(results):
+    missing_data = []
+    for j, result in enumerate(results):
+        data_dict = {}
+        keys = [key for key in result.keys() if "_true" not in key]
+        for key in keys:
+            if np.isnan(result[key]).any():
+                data_dict[key] = np.argwhere(np.isnan(result[key]))
+            else:
+                data_dict[key] = None
+        missing_data.append(data_dict)
+    
+    exist_missing = False
+    for data_dict in missing_data:
+        for key, value in data_dict.items():
+            if value != None:
+                exist_missing = True
+                break
+        if exist_missing:
+            break
+
+    if exist_missing:
+        print("Simulation consistency (sim1) contains missing values.")
+
+    return missing_data, exist_missing
+
 def create_data_plot(results, grid):
     plot_data = {}
     store = []
@@ -42,7 +68,7 @@ def plot_univariate(data_plot):
     for response_dist in data_plot.values():
         for key, value in response_dist.items():
             current_path = os.getcwd()
-            folder_path = os.path.join(current_path, "../simulation/plots")
+            folder_path = os.path.join(current_path, "simulation/plots/consistency")
             filename = "plot" + "_" + str(fig_count) + ".pdf"
             full_filepath = os.path.join(folder_path, 
                                          filename)
@@ -83,7 +109,6 @@ def analyze_results(results, grid):
             appended_data = pd.DataFrame({"n_obs":[grid[j]["n_obs"]]*bias.shape[0]})
             data = pd.concat([data, appended_data], axis=1)
             data.index = [key_est + "_" + str(i) for i in range(bias.shape[0])]
-            print(data)
             if grid[j]["response_dist"] in results_bias.keys() and key_est in results_bias[grid[j]["response_dist"]].keys():
                 results_bias[grid[j]["response_dist"]][key_est] = pd.concat([results_bias[grid[j]["response_dist"]][key_est], data])
             elif grid[j]["response_dist"] in results_bias.keys() and key_est not in results_bias[grid[j]["response_dist"]].keys():
@@ -120,3 +145,20 @@ def calc_mc_se_empse(result):
     mc_se_empse = sd_bias/(2*result.shape[0] - 1)
     return mc_se_empse
 
+def create_latex_table(results_proc):
+    table_count = 1
+    for result in results_proc.values():
+        combine_data = [data.reset_index() for data in result.values()]
+        table_data = pd.concat(combine_data, axis=0)
+        print_table = table_data.pivot(index="index", columns="n_obs")
+        current_path = os.getcwd()
+        folder_path = os.path.join(current_path, "simulation/tables")
+        filename = "sim1_table" + "_" + str(table_count) + ".latex"
+        full_filepath = os.path.join(folder_path, 
+                                     filename)
+        print_table.to_latex(buf=full_filepath,
+                             index=True,
+                             index_names=False,
+                             float_format="%.4f")
+        table_count += 1
+    

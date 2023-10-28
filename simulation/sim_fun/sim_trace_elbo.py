@@ -247,20 +247,26 @@ plt.xlabel("Epoch")
 plt.ylabel("ELBO")
 
 current_directory = os.getcwd()
-path = "thesis/assets/plots"
+path1 = "thesis/assets/plots"
+path2 = "simulation/plots/trace_elbo"
 
 # Create the full path to the folder
-folder_path = os.path.join(current_directory, 
-                           path)
+folder_path1 = os.path.join(current_directory, 
+                           path1)
+folder_path2 = os.path.join(current_directory, 
+                           path2)
 
 filename = "plot2.pdf"
 
 # Create the full path to the file
-full_filepath = os.path.join(folder_path, 
+full_filepath1 = os.path.join(folder_path1, 
+                             filename)
+full_filepath2 = os.path.join(folder_path2, 
                              filename)
 
 # safe figure to assets/plots
-fig.savefig(full_filepath)
+fig.savefig(full_filepath1)
+fig.savefig(full_filepath2)
 
 """
 Using different seeds.
@@ -324,8 +330,11 @@ plt.ylabel("ELBO")
 filename = "plot3.pdf"
 
 # Create the full path to the file
-full_filepath = os.path.join(folder_path, 
+full_filepath1 = os.path.join(folder_path1, 
+                             filename)
+full_filepath2 = os.path.join(folder_path2, 
                              filename)
 
 # safe figure to assets/plots
-fig.savefig(full_filepath)
+fig.savefig(full_filepath1)
+fig.savefig(full_filepath2)

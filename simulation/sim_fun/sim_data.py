@@ -93,7 +93,7 @@ def quadratic_fun(x, coef):
     return y
 
 def complex_fun(x, coef):
-    y = coef[0] + coef[1]*jnp.sin(x)
+    y = coef[0] + coef[1]*jnp.sin(coef[2]*x)
     return y
 
 """
@@ -114,10 +114,27 @@ def normal_quadratic_const(n_obs, key_int):
     data_dict = {"data": df,
                  "coef": {"loc": jnp.array([3.0, 0.2, -0.5]),
                           "scale": jnp.array(1.0)},
-                 "rel": "quadratic, constant"
+                 "rel": "complex, constant"
                  }
 
     return data_dict
+
+def normal_complex_const(n_obs, key_int):
+    df = sim_data_normal([-10,10], 
+                         n_obs, 
+                         complex_fun,
+                         None,
+                         coef_loc=jnp.array([3.0, 1.75, 1.5]),
+                         coef_scale=jnp.array(1.5),
+                         key_int=key_int)
+    
+    data_dict = {"data": df,
+                 "coef": {"loc": jnp.array([3.0, 1.75, 1.5]),
+                          "scale": jnp.array(1.5)},
+                 "rel": "quadratic, constant"
+                 }
+
+    return data_dict    
 
 def bernoulli_linear(n_obs, key_int):
     df = sim_data_bernoulli([-3,3], 
@@ -145,9 +162,8 @@ def plot_sim_data(df: pd.DataFrame, dist: str):
 
         sort_df = df.sort_values("x")
 
-        fig = plt.figure(figsize=(8,6))
         sns.set_theme(style="whitegrid")
-
+        fig = plt.figure(figsize=(8,6))
         plt.scatter(x=sort_df["x"], y=sort_df["y"], s=5)
         plt.plot(sort_df["x"], sort_df["loc"])
         plt.plot(sort_df["x"], sort_df["upper"], linewidth=0.7, color=sns.color_palette()[1], linestyle='dashed')
@@ -157,8 +173,7 @@ def plot_sim_data(df: pd.DataFrame, dist: str):
     elif dist == "bernoulli":
         sort_df = df.sort_values("x")
 
-        fig = plt.figure(figsize=(8,6))
         sns.set_theme(style="whitegrid")
-
+        fig = plt.figure(figsize=(8,6))
         plt.scatter(x=sort_df["x"], y=sort_df["probs"], s=5)
         plt.show()

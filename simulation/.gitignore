@@ -3,3 +3,6 @@ results
 
 # Ignore the plots directory 
 plots
+
+# Ignore the tables directory 
+tables 
