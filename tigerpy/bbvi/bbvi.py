@@ -29,7 +29,6 @@ from .transform import (
     log_transform,
     exp_transform,
     batched_jac_determinant,
-    log_cholesky_parametrization,
     log_cholesky_parametrization_to_tril
 )
 
@@ -46,11 +45,12 @@ from ..model.nodes import (
 from ..distributions.mvn import (
     mvn_precision_chol_log_prob,
     mvn_precision_chol_sample,
-    solve_chol
 )
 
 from .init_bbvi import (
-    set_init_var_params
+    set_init_var_params,
+    set_init_loc_scale,
+    add_jitter
 )
 
 class BbviState(NamedTuple):
@@ -80,22 +80,28 @@ class Bbvi:
 
     def __init__(self, 
                  graph: ModelGraph, 
-                 jitter_init: bool=True) -> None:
+                 jitter_init: bool=True,
+                 model_init: bool=False,
+                 loc_prec: float=1.0,
+                 scale_prec: float=2.0) -> None:
         self.graph = copy.deepcopy(graph)
         self.digraph = self.graph.digraph
         self.model = self.graph.model
         self.num_obs = self.model.num_obs
         self.data = {}
         self.jitter_init = jitter_init
+        self.model_init = model_init
         self.init_var_params = {}
         self.var_params = {}
         self.num_var_params = None
         self.trans_var_params = {}
         self.return_loc_params = {}
         self.elbo_hist = {}
+        self.elbo_hist_burn = {}
 
         self.set_data()
-        self.set_var_params()
+        self.set_var_params(loc_prec, 
+                            scale_prec)
         self.count_var_params()
 
     def set_data(self) -> None:
@@ -112,21 +118,26 @@ class Bbvi:
                 self.data[node] = attr["value"]
 
     def set_var_params(self, 
-                       key: Union[jax.random.PRNGKey, None]=None, 
-                       scale_prec: float=10.0) -> None:
+                       loc_prec: float=1.0,
+                       scale_prec: float=2.0) -> None:
         """
         Method to set the internal variational parameters.
         """
 
-        for node in self.graph.prob_traversal_order:
-            node_type = self.digraph.nodes[node]["node_type"]
-            if node_type == "strong":
-                attr = self.digraph.nodes[node]["attr"]
-                param_response = self.graph.response_param_member(node)
-                self.init_var_params[node] = set_init_var_params(attr, 
-                                                                 param_response, 
-                                                                 key, 
-                                                                 scale_prec)
+        if self.model_init == True:
+            if self.digraph.nodes["response"]["attr"]["dist"] is tfjd.Normal:
+                self.init_var_params = set_init_loc_scale(self.digraph,
+                                                          self.graph.prob_traversal_order,
+                                                          loc_prec,
+                                                          scale_prec)
+        else:
+            for node in self.graph.prob_traversal_order:
+                node_type = self.digraph.nodes[node]["node_type"]
+                if node_type == "strong":
+                    attr = self.digraph.nodes[node]["attr"]
+                    self.init_var_params[node] = set_init_var_params(attr,
+                                                                     loc_prec,
+                                                                     scale_prec)
 
     def count_var_params(self) -> None:
         """
@@ -455,14 +466,11 @@ class Bbvi:
         Returns:
             Tuple: Last ELBO (jnp.float32) and the optimized variational parameters (dict).
         """
-
         if type(step_size) is float:
             optimizer = optax.adam(learning_rate=step_size)
         else:
             optimizer = optax.adamw(learning_rate=step_size)
-
-        opt_state = optimizer.init(self.init_var_params)
-
+        
         def bbvi_body(idx, bbvi_state):
             
             key, subkey = jax.random.split(bbvi_state.key)
@@ -477,8 +485,11 @@ class Bbvi:
                                                                   bbvi_state.num_obs,
                                                                   num_var_samples,
                                                                   subkey)
-            updates, opt_state = optimizer.update(grad, bbvi_state.opt_state, bbvi_state.params_new)
-            params_new = optax.apply_updates(bbvi_state.params_new, updates)
+            updates, opt_state = optimizer.update(grad, 
+                                                  bbvi_state.opt_state, 
+                                                  bbvi_state.params_new)
+            params_new = optax.apply_updates(bbvi_state.params_new, 
+                                             updates)
             elbo = - neg_elbo
 
             return BbviState(bbvi_state.data,
@@ -489,9 +500,8 @@ class Bbvi:
                              opt_state,
                              params_new,
                              elbo)
-        
+                
         def epoch_body(epoch_state, scan_input):
-
             key, subkey = jax.random.split(epoch_state.key)
             num_obs = epoch_state.data["response"].shape[0]
             rand_perm = jax.random.permutation(subkey, num_obs)         
@@ -524,12 +534,12 @@ class Bbvi:
                 return params_best, elbo_best
             
             params_best, elbo_best = jax.lax.cond(bbvi_state.elbo > epoch_state.elbo_best,
-                                                         true_fn,
-                                                         false_fn,
-                                                         bbvi_state.params,
-                                                         bbvi_state.elbo,
-                                                         epoch_state.params_best, 
-                                                         epoch_state.elbo_best)
+                                                  true_fn,
+                                                  false_fn,
+                                                  bbvi_state.params,
+                                                  bbvi_state.elbo,
+                                                  epoch_state.params_best, 
+                                                  epoch_state.elbo_best)
             
             return EpochState(epoch_state.data,
                               elbo_best,
@@ -550,17 +560,22 @@ class Bbvi:
         key = jax.random.PRNGKey(key_int)
         if self.jitter_init:
             key, subkey = jax.random.split(key)
-            self.set_var_params(key=subkey)
+            self.init_var_params = add_jitter(self.init_var_params, 
+                                              subkey)
+
+        opt_state = optimizer.init(self.init_var_params)
 
         epoch_state = EpochState(self.data,
-                                 jnp.array(-jnp.inf),
-                                 self.init_var_params,
-                                 key,
-                                 self.init_var_params,
-                                 opt_state,
-                                 self.init_var_params)
-
+                                      jnp.array(-jnp.inf),
+                                      self.init_var_params,
+                                      key,
+                                      self.init_var_params,
+                                      opt_state,
+                                      self.init_var_params)
+        
         elbo_history = jnp.array([])
+
+        print("Start optimization ...")
 
         for _ in range(epochs // chunk_size):
             epoch_state, elbo_chunk = jscan(chunk_size, epoch_state)
@@ -568,6 +583,8 @@ class Bbvi:
             elbo_delta = abs(elbo_history[-1] - elbo_history[-200]) if len(elbo_history) > 200 else jnp.inf
             if elbo_delta < threshold:
                 break
+
+        print("Finished optimization.")
 
         self.elbo_hist["elbo"] = elbo_history
         self.elbo_hist["epoch"] = jnp.arange(elbo_history.shape[0])
@@ -596,9 +613,8 @@ class Bbvi:
         """
         Method to visualize the progression of the ELBO during the optimization.
         """
-
         plt.plot(self.elbo_hist["epoch"], self.elbo_hist["elbo"])
-        plt.title("Progression of the ELBO")
+        plt.title("Progression of the ELBO during optimization")
         plt.xlabel("Epoch")
         plt.ylabel("ELBO")
         plt.show() 

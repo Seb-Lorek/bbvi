@@ -369,6 +369,10 @@ class ModelGraph:
 
             elif node_type == "strong":
                 attr["value"] = params[node]
+                
+                # Store to which parameter of the response the strong node belongs
+                param_response = self.response_param_member(node)
+                attr["param_response"] = param_response
 
                 for parent in self.digraph.predecessors(node):
                     if self.digraph.nodes[parent]["node_type"] not in ["hyper", "fixed"]:
