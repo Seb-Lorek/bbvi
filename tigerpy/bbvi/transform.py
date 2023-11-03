@@ -26,10 +26,15 @@ def jac_determinant(f, x):
     jacobian = jacfwd(f)(x)
     return jnp.linalg.det(jacobian)
 
+# create a batched version to calculate the determinant of the Jacobian
 batched_jac_determinant = vmap(jac_determinant, (None, 0))
 
 # Note: while being general this is not efficient for complicated Jacobians
 # Leave it for the moment at this implementation
+
+# function to calculate the hessian of a function
+def hessian(f, argnums):
+  return jax.jacfwd(jax.grad(f, argnums=argnums), argnums=argnums)
 
 # Use the unique definition of the Cholesky decomposition
 def fill_lower_diag(log_vec_L: Array, d: int) -> Array:
@@ -79,3 +84,22 @@ def log_cholesky_parametrization_to_tril(log_vec_L: Array, d: int) -> Array:
     )
 
     return log_cholesky_cov_tril
+
+def cov_from_prec_chol(precision_matrix_chol: jax.Array) -> jax.Array:
+    """
+    Obtain the covariance matrix from the cholesky decomposition of the precision 
+    matrix.
+    """
+    
+    return jnp.linalg.inv(jnp.dot(precision_matrix_chol, precision_matrix_chol.T))
+
+def solve_chol(chol_lhs: jax.Array, rhs: jax.Array) -> jax.Array:
+    """
+    Solves a system of linear equations `chol_lhs @ x = rhs` for x,
+    where `chol_lhs` is lower triangular matrix, by applying
+    forward and backward substitution. Returns x.
+    """
+
+    tmp = jax.lax.linalg.triangular_solve(chol_lhs, rhs, left_side=True, lower=True)
+
+    return jax.lax.linalg.triangular_solve(chol_lhs, tmp, lower=True)
