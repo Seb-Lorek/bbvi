@@ -36,6 +36,8 @@ if __name__ == "__main__":
     # Run the script
     subprocess.run(['python3', script_path])
 
+    sys.exit()
+    
     # Start simulation study 1
     print("Start simulation 1")
     # Track start time simulation 1
