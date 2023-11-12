@@ -6,7 +6,7 @@ bibliography: ["bib/references.bib", "bib/packages.bib"]
 
 <!-- Some short (2-3 sentences on variational inference) -->
 
-In VI, we approximate the posterior distribution using a variational distribution from a parametric family $\mathcal{D}$. Through optimization, we adjust the variational parameters to ensure that the variational distribution closely aligns with the posterior distribution in terms of the KL divergence. This optimized variational distribution subsequently becomes our most accurate approximation to the exact posterior distribution. To gain a comprehensive understanding of VI, we will initiate our exploration by examining Bayesian inference within the context of two prevalent hierarchical Bayesian regression models. The first is a simple Bayesian linear regression model and the second is a Bayesian logistic regression model. From this foundation, we will progressively construct the process of VI in this chapter.
+In VI, we approximate the posterior distribution using a variational distribution from a parametric family $\mathcal{Q}$. Through optimization, we adjust the variational parameters to ensure that the variational distribution closely aligns with the posterior distribution in terms of the KL divergence. This optimized variational distribution subsequently becomes our most accurate approximation to the exact posterior distribution. To gain a comprehensive understanding of VI, we will initiate our exploration by examining Bayesian inference within the context of two prevalent hierarchical Bayesian regression models. The first is a simple Bayesian linear regression model and the second is a Bayesian logistic regression model. From this foundation, we will progressively construct the process of VI in this chapter.
 
 ## Bayesian inference {#sec-binf}
 
@@ -89,27 +89,21 @@ $$
 
 The multiplication of the Bernoulli likelihood and the multivariate normal prior doesn't facilitate the straightforward closed-form derivation of a posterior distribution. Moreover obtaining the evidence in the denominator is as always not feasible. As a result, we require approximate inference methods to attain the posterior. Prediction essentially operates under the same principles as outlined in (@eq-post-pred).
 
-...
-
-TBD: Maybe also include some sentences on model choice.
-
-...
-
 Keeping the objectives of Bayesian inference in mind, we can proceed to formulate the optimization criterion that addresses the inference problem in VI.
 
 ## Evidence lower bound {#sec-elbo}
 
-The optimization problem of VI is to find the best approximation to the exact posterior, out of the variational family $\mathcal{D}$, in terms of the following KL divergence
+The optimization problem of VI is to find the best approximation to the exact posterior, out of the variational family $\mathcal{Q}$, in terms of the following KL divergence
 
 $$
 \begin{split}
-    q^{*}(\thetavec) &= \argmin_{q(\thetavec) \in \mathcal{D}} \text{D}_{\text{KL}} \left(q(\thetavec) || p(\thetavec | \yvec, \X) \right) \\
-    &= \argmin_{q(\thetavec) \in \mathcal{D}} \int q(\thetavec) \ln \left( \frac{q(\thetavec)}{p(\thetavec | \yvec, \X)} \right) \,d \thetavec \\
-    &= \argmin_{q(\thetavec) \in \mathcal{D}} \text{E}_{q(\thetavec)} \left[ \ln \left( \frac{q(\thetavec)}{p(\thetavec | \yvec, \X)} \right) \right] .
+    q^{*}(\thetavec) &= \argmin_{q(\thetavec) \in \mathcal{Q}} \text{D}_{\text{KL}} \left(q(\thetavec) || p(\thetavec | \yvec, \X) \right) \\
+    &= \argmin_{q(\thetavec) \in \mathcal{Q}} \int q(\thetavec) \ln \left( \frac{q(\thetavec)}{p(\thetavec | \yvec, \X)} \right) \,d \thetavec \\
+    &= \argmin_{q(\thetavec) \in \mathcal{Q}} \text{E}_{q(\thetavec)} \left[ \ln \left( \frac{q(\thetavec)}{p(\thetavec | \yvec, \X)} \right) \right] .
 \end{split}
 $$
 
-Parameters of interest are again collected in $\thetavec$, while $\text{D}_{\text{KL}} \left( q(\thetavec) || p(\thetavec | \yvec, \X) \right)$ denotes the KL diveregence [@Kullback1951] between the variational distribution and the posterior. The KL divergence is always $\geq 0$. Upon solving this optimization problem, $q^{*}(\thetavec)$ represents our most accurate approximation to the exact posterior. One should bear in mind that the variational distribution is typically under-parameterized and often falls short in accurately approximating the posterior distribution [@Zhang2017, p. 3]. Hence we are usually not able to to reduce the KL divergence below some arbitrary low value. Moreover defines the scope of the family $\mathcal{D}$ the complexity of the optimization problem. But while this objective offers valuable theoretical insight, it often remains infeasible to compute due to the requirement for the exact posterior to evaluate it. Consequently, obtaining the evidence for evaluation becomes necessary, which has been shown to be generally challenging.
+Parameters of interest are again collected in $\thetavec$, while $\text{D}_{\text{KL}} \left( q(\thetavec) || p(\thetavec | \yvec, \X) \right)$ denotes the KL diveregence [@Kullback1951] between the variational distribution and the posterior. The KL divergence is always $\geq 0$. Upon solving this optimization problem, $q^{*}(\thetavec)$ represents our most accurate approximation to the exact posterior. One should bear in mind that the variational distribution is typically under-parameterized and often falls short in accurately approximating the posterior distribution [@Zhang2017, p. 3]. Hence we are usually not able to reduce the KL divergence below some arbitrary low value. Moreover defines the scope of the family $\mathcal{Q}$ the complexity of the optimization problem. But while this objective offers valuable theoretical insight, it often remains infeasible to compute due to the requirement for the exact posterior to evaluate it. Consequently, obtaining the evidence for evaluation becomes necessary, which has been shown to be generally challenging.
 
 Nevertheless we can also introduce an alternative criterion that possesses mathematical equivalence, in terms of the optimized variational distribution, but offers the advantage of efficient solvability. Begin by considering the log evidence $\ln(p(\yvec | \X))$ as a foundational point. Our goal is now to show that the log evidence is bounded from below by the so called **e**vidence **l**ower **bo**und (ELBO), which is defined as
 
@@ -169,13 +163,13 @@ $$
 
 This decomposition depicts that maximization of the ELBO will motivate variational densities for $\thetavec$ that explain the data and at the same time are similar to the prior density. Because we want to increase the expected log-likelihood as much as possible and at the same time decrease the KL divergence between the variational distribution and the prior. Thus the ELBO mimics the common balance of likelihood and prior.
 
-Because the ELBO is a lower bound for the evidence, researchers have proposed to also use it for the task of model selection. Nevertheless, theoretical considerations are not supportive of model selection based on a lower bound [@Blei2017, p. X]. Furthermore the ELBO is a non-convex objective function. Hence optimzation can only guarantee convergence to a local optimum which is sensitive to initialization [REF].
+Because the ELBO is a lower bound for the evidence, researchers have proposed to also use it for the task of model selection. Nevertheless, theoretical considerations are not supportive of model selection based on a lower bound [@Blei2017, p. 7]. Moreover, the ELBO represents a non-convex objective function. Consequently, optimization can only assure convergence to a local optimum, which is highly influenced by the initialization [@Blei2017, p. 11].
 
 ## Variational family {#sec-vfam}
 
 <!-- Information on the variational family choosen -->
 
-Up until now, we have not delved into the specifics of defining the variational family $\mathcal{D}$ and consequently the variational distribution $q$. However, we did discuss the crucial point that the complexity of $q$ significantly influences the process of VI. On one hand, a more intricate family permits enhanced approximations. Conversely, this heightened complexity makes optimization more difficult. Hence, establishing a versatile $q$ capable of approximating a wide array of probability distribution shapes while effectively handling optimization complexity becomes a commendable objective. In this section we will start with the most simple variational family known as mean-field variational family. For this reason VI utilizing the mean-field variational family is often referred to as mean-field VI.
+Up until now, we have not delved into the specifics of defining the variational family $\mathcal{Q}$ and consequently the variational distribution $q$. However, we did discuss the crucial point that the complexity of $q$ significantly influences the process of VI. On one hand, a more intricate family permits enhanced approximations. Conversely, this heightened complexity makes optimization more difficult. Hence, establishing a versatile $q$ capable of approximating a wide array of probability distribution shapes while effectively handling optimization complexity becomes a commendable objective. In this section we will start with the most simple variational family known as mean-field variational family. For this reason VI utilizing the mean-field variational family is often referred to as mean-field VI.
 
 The mean-field variational family essentially restricts the parameters of the model
 in the variational distribution to be independent. Thus every parameter $\theta_{j}$ has it's own probability distribution (factor) $q_{j}$ in the variational distribution, parameterized by $\phivec_{j}$, leading to
@@ -188,7 +182,7 @@ Where we decomposed $\thetavec$ as $\thetavec = (\theta_{1}, \dots, \theta_{j} ,
 
 Even though the mean-field family can fit any marginal density to the parameters, the assumption of independence among all parameters could potentially be overly restrictive. Therefore, there might be a desire to introduce dependencies between parameters that are interdependent. Of course, incorporating dependencies naturally augments the complexity of the optimization problem.
 
-![Mean-field approximation to a 2-D multivariate normal distribution, based on @Blei2017 [p. 9, Figure 1].](assets/plots/plot1.pdf){width=60% fig-scap="Mean-field approximation" #fig-mean-field}
+![Mean-field approximation to a 2-D multivariate normal distribution, based on @Blei2017 [p. 9, Figure 1].](assets/plots/plot1.pdf){width=60% fig-scap="Mean-field approximation." #fig-mean-field}
 
 @fig-mean-field exemplifies how the mean-field variational distribution disregards the dependence between the two parameters (f.e. regression coefficients). Despite correctly identifying the mean, it fails to capture their interdependence. This serves as an illustration that the variational approximation of the posterior can exhibit significant inaccuracy when the variational family is subject to substantial constraints. Furthermore, the marginal variances of the variational distribution are smaller than those of the exact posterior. This outcome is a consequence of utilizing the zero-avoiding KL divergence, denoted as $\text{D}_{\text{KL}}(q || p)$, which endeavors to minimize $q$ whenever $p$ is small. An alternative approach involves employing the density-covering KL divergence, $\text{D}_{\text{KL}}(p || q)$, which seeks to maximize $q$ whenever $p$ is large. This concern becomes particularly pronounced when the posterior assumes multiple modes, while the variational density only accommodates a single mode. Consequently, a branch of research is dedicated to exploring alternative objectives for VI, as discussed in @Bishop2008 [pp. 466].
 

@@ -67,14 +67,25 @@ December, 2023 \\
 
 \section*{Abstract}
 
-The thesis first provides an introduction into variational inference as an alternative
-inference tool in Bayesian inference problemes, which allows for approximation of the posterior distribution.
-Moreover are the properties of stochastic variational inference for Bayesian GAMLSS models analyized.
-Showing that using a black-box variational inference inference algorithm results in
-consistent parameter estimates, using the mean field family, for a variety of common models.
-Furthermore is variational inference compared to common MCMC sampling algorithms. The algorithm is implemented in \verb|python|
-using \verb|JAX| as a numerical computing library and for usage of automatic differentiation.
-Moreover are the models constructed using graph theory via the \verb|networkx| package.
+The thesis explores variational inference as a viable alternative tool for 
+tackling Bayesian inference problems, allowing for the approximation of 
+posterior distributions through optimization. Variational inference is applied 
+to Bayesian (semiparameteric) 
+disitrubtional regression models and several simulation studies traget 
+different statistical aspects of the implemented inference algorithm. The "black-box" 
+variational inference algorithm has been implemented in \verb|python| in 
+combination with a model building library that uses the idea of probabilistic 
+graphical models to construct Bayesian semiparametric distributional regression 
+models and retrieve node information during the process of inference. A simulation 
+study shows that the implemented variational inference algorithm results in 
+consistent parameter estimates when considering the posterior mean. 
+Moreover analyzes the thesis in a simulation study the posterior distributions 
+of Markov chain Monte Carlo and "black-box" variational inference and shows 
+that variational inference obtains rather similar posterior distributions. 
+Finally variational inference indicates, in a further study, the ability to 
+approximate the posterior well even after a low number of iterations. 
+This is in contrast to Markov Chain Monte Carlo methods which usually require a 
+large number of iterations to obtain a good approximation of the posterior.
 
 \clearpage
 
@@ -84,6 +95,9 @@ Moreover are the models constructed using graph theory via the \verb|networkx| p
 
 % --- LOF --- %
 \listoffigures
+
+% --- LOA --- %
+\listofalgorithms 
 
 % --- LOT --- %
 \listoftables
@@ -100,4 +114,9 @@ Moreover are the models constructed using graph theory via the \verb|networkx| p
   CAVI & Coordinate ascent variational inference \\
   SGD & Stochastic gradient descent \\
   BBVI & "Black-box" variational inference \\
+  API & Application programming interface \\
+  JIT & Just-in-time compilation \\
+  CPU & Central processing unit \\
+  GPU & Graphical processing unit \\
+  TPU & Tensor processing unit \\
 \end{tabular}

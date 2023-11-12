@@ -3,3 +3,6 @@
 
 # Ignore Log files
 *.log
+
+# Ignore assets 
+/assets

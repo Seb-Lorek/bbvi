@@ -18,7 +18,7 @@ $$
 \end{split}
 $$ {#eq-loc-scale}
 
-The linear predictors $\eta_{i, l}, \ l = 1,2$ contain the effects of the covariates. Such models hence allow the researcher to study the impact of covariates beyond the mean [@Fahrmeir2021, p. 623]. This can be motivated by modelling the response distribution more realistically or by focusing on certain properties of the distribution guided by a specific research question. The thesis only considers Bayesian (semi-)parametric distributional regression, however there is also a large literature on non-parameteric models, being completely distribution free [@Fahrmeir2021, pp. 625]. It is of course also possible to extend the analysis beyond tradtitional location-scale regression by modelling moments such as skewness and kurtosis. To achieve this, one may opt for a more versatile distribution in lieu of the normal distribution. GAMLSS provide a unifying framework for distributional regression, first proposed by @Rigby2005. Here we allow for more flexible response distributions and potentially model any of the parameters that parameterize the distribution [@Fahrmeir2021, p. 641]. Furthermore we can potentially use structured additive forms in the linear predictors. The linear predictors in (@eq-loc-scale) f.e. usually combine fixed and smooth terms such that we obtain the following additive structure 
+The linear predictors $\eta_{i, l}, \ l = 1,2$ contain the effects of the covariates. Such models hence allow the researcher to study the impact of covariates beyond the mean [@Fahrmeir2021, p. 623]. This can be motivated by modelling the response distribution more accurately or by focusing on certain properties of the distribution guided by a specific research question. The thesis only considers Bayesian (semi-)parametric distributional regression, however there is also a large literature on non-parameteric models, being completely distribution free [@Fahrmeir2021, pp. 625]. It is of course also possible to extend the analysis beyond tradtitional location-scale regression by modelling moments such as skewness and kurtosis. To achieve this, one may opt for a more versatile distribution in lieu of the normal distribution. GAMLSS provide a unifying framework for distributional regression, first proposed by @Rigby2005. Here we allow for more flexible response distributions and potentially model any of the parameters that parameterize the distribution [@Fahrmeir2021, p. 641]. Furthermore we can potentially use structured additive forms in the linear predictors. The linear predictors in (@eq-loc-scale) f.e. might combine fixed and smooth terms such that we obtain the following additive structure 
 
 $$
 \eta_{i, l} = \xvec_{i}^{\mathrm{T}} \betavec^{l} + f_{1}^{l}(\nu_{i, 1}) + \ldots + f_{p}^{l}(\nu_{i, p}).
@@ -62,7 +62,7 @@ $$
 \end{split}
 $$
 
-Since we usually set k to 1 or 2, we assume non-informative priors for the first and potentially second coefficient 
+Since we usually set $k=1$ or $k=2$, we assume non-informative priors for the first and potentially second coefficient 
 
 $$
 \begin{split}
@@ -74,7 +74,7 @@ $$
 From this prior specification we can also obtain the joint multivariate prior of $\gammavec$, conditional on the variance parameter $\tau^{2}$
 
 $$
-p(\gammavec | \tau^{2}) = (2 \pi)^{-\frac{r \left( \frac{1}{\tau^{2}} \K \right)}{2}} \det \left( \frac{1}{\tau^2}K \right)_{+}^{\frac{1}{2}}\exp \left( -\frac{1}{2} \gammavec^{\mathrm{T}}\frac{1}{\tau^{2}} \K \gammavec \right)
+p(\gammavec | \tau^{2}) = (2 \pi)^{-\frac{r \left(\K \right)}{2}} \det \left( \frac{1}{\tau^2}K \right)_{+}^{\frac{1}{2}}\exp \left( -\frac{1}{2} \gammavec^{\mathrm{T}}\frac{1}{\tau^{2}} \K \gammavec \right)
 $$
 
 The rank deficient precision matrix $\frac{1}{\tau^{2}} \K$ results from the matrix multiplication $\frac{1}{\tau^{2}} \D^{\mathrm{T}}\D$, where $\D$ denotes the difference matrix for the k-th order differences of the coefficients [@Fahrmeir2021, pp. 455-456]. This distribution is a degenerate multivariate normal distribution, leading to an improper prior. Moreover $\det(\cdot)_{+}$ denotes the pseudo determinant, due to the precision matrix being rank deficient. To complement the prior specification we use the inverse gamma distribution as a prior^[We avoid using the term "hyperprior" to prevent unnecessary complexity in our terminology.] on the parameter $\tau^{2}$
@@ -101,7 +101,7 @@ $$
 Being in a Bayesian setting we supplement the fixed regression coefficients with the following common prior  
 
 $$
-\betavec \sim \mathcal{N}(\zerovec, 100 \I),
+\betavec \sim \mathcal{N}(\zerovec, 100^{2} \I),
 $$
 
 and each of the parameters $\gammavec_{1,l}, \ldots, \gammavec_{p, l}$ with the prior specification $p(\gammavec | \tau^{2})p(\tau^{2})$ outlined above. Such a set-up could in theory easily be augmented by including interactions between smooth effects and a covariate as in varying coefficient models (VCM), approximations of two dimensional smooth surface functions or geoaddtive effects [@Lang2004, p. 188 ff.].
@@ -135,6 +135,7 @@ In this context $\text{pa}(x_{i})$ are the parents of the variable $x_{i}$ and t
     \node[const, above=of loc, xshift=1cm] (z) {$\mathbf{z}_{i}$};
     \node[latent, above=of loc, xshift=2cm, yshift=0.5cm] (gamma) {$\boldsymbol{\gamma}$};
     \node[latent, above=of gamma] (tau) {$\tau^{2}$};
+    \node[const, above=of gamma, xshift=1cm] (K) {$\mathbf{K}_{\boldsymbol{\gamma}}$};
     \node[const, above=of tau, xshift=-1cm] (a_tau) {$a_{\tau^{2}}$};
     \node[const, above=of tau, xshift=1cm] (b_tau) {$b_{\tau^{2}}$};
     \node[latent, above= of y, xshift=4cm] (scale) {$\sigma$};
@@ -145,6 +146,7 @@ In this context $\text{pa}(x_{i})$ are the parents of the variable $x_{i}$ and t
     \edge [shorten <= 2pt] {loc, scale} {y};
     \edge [shorten >= 2pt, shorten <= 2pt] {x, beta, z, gamma} {loc};
     \edge [shorten <= 2pt] {beta_loc, beta_sig} {beta};
+    \edge [shorten <= 2pt] {K} {gamma};
     \edge [shorten <= 2pt] {tau} {gamma};
     \edge [shorten <= 2pt] {a_tau, b_tau} {tau};
     \edge [shorten <= 2pt] {a_sig, b_sig} {scale};
@@ -155,8 +157,4 @@ In this context $\text{pa}(x_{i})$ are the parents of the variable $x_{i}$ and t
 \end{tikzpicture}
 ```
 
-Compared to DAGs with only one node type, one can distinguish between different node types in a Bayesian network. Nodes that are random variables are drawn with a circle, while constant (non-random) nodes are drawn without a circle. Constant nodes are either observed data, linear predictor nodes or hyperparameters of the prior distributions. Moreover the observed data and hyperparameters constitute the leaves of the graph. The generality of this framework proves highly beneficial when constructing Bayesian hierarchical (regression) models. It not only offers reusable building blocks for creating a wide variety of probabilistic models in computer programs but also directly implies the sequence of updating the nodes during inference due to the directed nature of the graph. Efficient traversal algorithms can thus be employed to navigate the directed graph, taking into account the interdependencies among the nodes. One example of such a traversal algorithm is the topological sorting algorithm [REF].
-
-
-
-
+Compared to DAGs with only one node type, one can distinguish between different node types in a Bayesian network. Nodes that are random variables are drawn with a circle, while constant (non-random) nodes are drawn without a circle. Constant nodes are either observed data, linear predictor nodes or hyperparameters of the prior distributions. Moreover the observed data and hyperparameters constitute the leaves of the graph. The generality of this framework proves highly beneficial when constructing Bayesian hierarchical (regression) models. It not only offers reusable building blocks for creating a wide variety of probabilistic models in computer programs but also directly implies the sequence of updating the nodes during inference due to the directed nature of the graph. Efficient traversal algorithms can thus be employed to navigate through the directed graph, taking into account the interdependencies among the nodes. To derive the traversal order in a DAG, a widely recognized algorithm is the topological sort algorithm [@Manber1989, chap. 7.4].

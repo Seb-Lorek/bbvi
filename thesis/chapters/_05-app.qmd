@@ -2,20 +2,105 @@
 bibliography: ["bib/references.bib", "bib/packages.bib"]
 ---
 
-# The inference algorithm and implementation {#sec-app}
+# Implementation {#sec-impl}
 
-Explain inference alogorithm and give overview of use in tigerpy.
+In this chapter we will introduce the software package `tigerpy` that has been written for the master thesis. It implements BBVI for Bayesian semiparameteric distributional regression models in the framework of probabilistic graphical models. The implementation is written in `python` [@python3] and is structured in a "loosly" written package style to enhance reusability of the code. `tigerpy` consists of a model building library `tigerpy.model` as well as a inference library `tigerpy.bbvi` which allows to run the inference algorithm on a constructed probabilistic graphical model. The process of constructing models in `tigerpy` closely mirrors and aligns with the principles found in the `python` package `liesel` [@Riebl2022].
 
-## Model formulation {#sec-model-setup}
+## Model building library {#sec-m-lib}
 
-Create schema of how to combine the different classes of tigerpy.model. After that exolain the internal graph structure. 
+The model building library `tigerpy.model` allows for flexible model formulation and ultimatively generates a DAG. The library consists of several classes that severe as fundamental model building blocks, which can be stacked in a mathematically vaild order. The first important class, for model construction, is the `tigerpy.model.Obs` class, which allows to construct an instance of a design matrix for a linear predictor node. The following code shows how to set up a design matrix for fixed coefficients only.
 
+```python
+import tigerpy.model as tiger
+import numpy as np
 
+X = tiger.Obs(name="X", 
+              intercept=True)
+X.fixed(data=np.ndarray)
+```
 
-## "Black-box" variational inference algorithm {#sec-bbvi-impl}
+We usually import the model building library with the alias `tiger`. The argument `intercept` indicates if an intercepts should be added to the design matrix. After creating an instance, we pass the data to the `.fixed()` method to generate a design matrix. Because we are interested in semiparametric distributional regression the class `Obs` also has a method to construct smooth effects via `.smooth()`, using the B-spline basis (see [Chapter @sec-semi-para]). To integrate both fixed and smooth effects in a linear predictor, it becomes essential to integrate centering constraints detailed in [Chapter @sec-semi-para]. To construct a design matrix for a linear predictor that contains fixed as wells as smooth effects the user as to execute the following code.
 
-The inference algorithm has commplexity $\mathcal{O}(MSD)$, $M$ := mini-batch size, $S$ := number  of MC samples from the noise distribution and $D$ is the number of model parameters, for which we employ the inference algorithm. The added complexity of automatic differentiation over analytic gradients is roughly constant. For using a full data batch we obtain $\mathcal{O}(NSD)$ compared to $\mathcal{O}(ND)$ for CAVI hence we only obtain sizeable speed increase for $M \ll N$.
+```python
+X = tiger.Obs(name="X", intercept=True)
+X.fixed(data=np.ndarray)
+X.smooth(data=np.ndarray, n_knots=20, degree=3, rwk=2)
+X.center()
+```
+
+The data input for the fixed effect can be any 2-D `numpy.ndarray`, while for the smooth effect it should be a 1-D `numpy.ndarray`. Fixed effects must be defined first, attempting to specify fixed effects after a smooth effect has already been defined will result in a raised error in the program. Finally it is important to call the method `.center()` to include the centering constraints for the identifiability of the smooth effects.
+
+After defining the design matrices for the linear predictors we start building the model by using the classes: `tigerpy.model.Hyper`, `tigerpy.model.Dist`, `tigerpy.model.Param`, `tigerpy.model.Lpred` and `tigerpy.model.Model`. 
+
+A hyperparameter node is implemented by the class `Hyper`, which has only a value and name attribute. Names are important in `tigerpy` as they uniquely define a node in the model and afterwards in the graph that is constructed from the model. 
+
+The `Dist` class constructs a probability distribution for a probabilistic node. One passes the distribution and the parameters of this distribution as arguments. Here for each parameter of the distribution the left hand assignment must match the corresponding parameter argument of the `tensorflow_probability.substrates.jax.distributions` application programming interface (API) [@tensorflow]. The right hand side can be an instance of one of the following classes, depending on the context: `Hyper`, `Param` or `Lpred`. An instance of the `Dist` class is either used in a parameter node (`Param`) or in the response node (`Model`) to define the distribution of the probabilistic nodes. 
+
+The `Param` class is responsible for constructing parameter nodes within the probabilistic graphical model. Parameter nodes are the nodes on which we want to conduct inference later on. They are constructed by providing an initial value, an instance of class `Dist`, the parameter space (either `None` or `"positive"`) and its name. Because parameter nodes are stochastic, each node possesses a `.log_prior` attribute representing the log probability density of that node. In the current implementation `tigerpy` only allows for the construction of continuous unconstrained or continuous positive constrained parameters.
+
+Instances of class `Obs` and class `Param` are the essential inputs for the `Lpred` class, which creates a linear predictor node. Of course one must also supply a function which specifies the inverse link function that connects the linear predictor to a parameter of the response. The `function`argument has a default value `None`, corresponding to the identity (inverse) link. It is crucial to emphasize that the ordering is once again important in this context. The user has to supply all parameters in the order corresponding to their construction in the design matrix, meaning the parameter nodes of the fixed coefficients precede smooth coefficients.
+
+Finally the whole model is put together in the class `Model`, which creates the response node. We once again provide the `Dist` class as an argument to define its probability distribution. In adition we pass the response data via the corresponding response argument, requiring a 1-D `numpy.ndarray`. The instance of class `Model` contains the full model by the hierarchical stacked instances of the classes. For a full example on how to construct a model see [Appendix @sec-m-constr-ex] for the case of a Bayesian linear regression model. The attributes `.log_lik` and `.log_prior` hold the corresponding values of the model log-likelihood and the model log prior probability density for the initial values supplied. The `.log_prob` attribute stores the joint model log probability density. 
+
+Once we have fully constructed the model we construct a DAG from the implicit structure in the `Model` instance, by using the `ModelGraph` class. The following code snipped shows how to easily build the probabilistic graphical model. 
+
+```python
+graph = tiger.ModelGraph(model=tiger.Model)
+graph.build_graph()
+```
+
+The `.build_graph()` method constructs the DAG by iteratively traversing through the nested class instances, generating the relevant nodes within the graph. Under the hood the DAG is constructed making use of the `networkx` python package [@networkx], through the `DiGraph` class and is functionalities. @fig-class-diag lists the different node types and their attributes, which are the building blocks of the underlying DAG.
+
+![Diagram illustrating various node types and their potential dependencies in the DAG generated by `tigerpy`.](assets/plots/plot7.pdf){width=80% fig-scap="Node types in the DAG constructed by `tigerpy`." #fig-class-diag}
+
+The DAG constructed in the implementation consists of 5 different node types, that have different attributes (shown in the middle of the rectangles). Each node additionally stores information on the specific `node_type`. Moreover are the nodes in the graph connected with directed edges that store information on the parent-child relationship. @fig-class-diag also shows the potential edges that a node can have. For example a `strong_node` only shares directed edges with either a `root`, `lpred_node` or another `strong_node`. The class `ModelGraph` in addition provides the method `.visualize_graph()`, which can be used to nicely display the DAG. The visualization is inspired by plate notation of Bayesian networks, for an example of a plate diagram refer to @fig-plate-bsemi-normal-reg. @fig-dag-ls-reg shows the graph for a Bayesian location scale regression. Blue nodes indicate probabilistic nodes, while fixed data and hyperparameter nodes constitute the leaves of the graph. Inverse link functions are displayed on the edge from a linear predictor nodes.
+
+![The DAG visualization for location-scale regression from the method `.visualize_graph()`.](assets/plots/plot6.pdf){width=80% fig-scap="DAG visualization for location-scale regression." #fig-dag-ls-reg}
+
+Once we have build the probabilistic graphical model with `.build_graph()` we can advance to the inference library `tigerpy.bbvi` to run the inference algorithm on the probabilistic graphical model.
+
+## Inference library {#sec-inf-lib}
+
+Inference in `tigerpy` is enabled by its inference library `tigerpy.bbvi`. In essence, it constructs a variational distribution from the model graph and offers the `.run_bbvi()` method for executing the inference algorithm on the model. Initially, the user must instantiate the `tigerpy.bbvi.Bbvi` class.
+
+```python
+import tigerpy.bbvi as bbvi
+
+q = bbvi.Bbvi(graph=tiger.ModelGraph, 
+              jitter_init=True, 
+              model_init=False, 
+              loc_prec=1.0, 
+              scale_prec=2.0)
+```
+
+Here we typically import the inference library under the alias `bbvi`. The class first obtains all data vectors and matrices from the graph and stores them in a dictionary. Hence it gathers the response data and all design matrices for the linear predictors. After that it initializes the variational parameters $\phivec$ and stores them in a dictionary. For the initialization we can choose to set the arguments `jitter_init` and `model_init` to either `True` or `False`. Using the `jitter_init` argument, we have the option to introduce jitter (small random noise) to the initial variational parameters. The `model_init` argument determines whether the algorithm should utilize a model-specific initialization. Presently, the implementation only includes a model-specific initialization for location-scale regression, employing a penalized least squares (PLS) approach for initializing the location parameters for the factors of the variational distribution. If the argmuent is set to `False` the program resorts to the initial values supplied during model construction. Bear in mind that the initial values of positive constrained parameters are transformed into the unconstrained space first, due to optimizing the parameters of the variational distribution in the unconstrained space. Initializing the lower diagonal of the precision matrix for a factor of the variational distribution poses a greater challenge. Presently, users are permitted to provide `loc_prec` and `scale_prec` with a float, determining the initial diagonal values of the lower triangular matrix. This applies to parameter nodes on the parent branch of a linear predictor node that model location or scale parameters of the repsonse, as well as parameters directly modeling location or scale parameters of the response. Finally we can run the inference algorithm on the instance of `Bbvi` with the method `.run_bbvi()`.
+
+```python
+q.run_bbvi(step_size=1e-3, 
+           grad_clip=1, 
+           threshold=1e-2, 
+           key_int=42, 
+           batch_size=64, 
+           train_share=0.8, 
+           num_var_samples=32, 
+           chunk_size=1, 
+           epochs=500)
+```
+
+The method requires several arguments that specify the various parameters essential for configuring the inference algorithm. For details on the arguments consult [Chapter @sec-inf-alg] or the docstrings on github. We only highlight the argument `chunk_size`. It determines the behavior of the `jax.lax.scan` function that internally calls the function `epoch_body()` for the execution of one epoch iteration. Setting the `chunk_size` to 1 results in the behaviour of a usual `for` loop with `epochs` iterations, while an `int` > 1 results in a scaned execution of the code^[Consult the `JAX` documentation ([https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.scan.html](https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.scan.html)) for details.]. This aids in compilation speed, as a standard `for` loop in JIT-compiled functions introduces a significant computational overhead.
+
+...
+
+Add explanation on return object and plotting. 
+
+...
 
 ## Technology {#sec-technology}
 
-Some words on JAX, networkx etc.
+As with all numerical computationally intensive algorithms, achieving satisfactory performance in terms of computation time is crucial. For fast execution of the algorithm outlined in [Chapter @sec-svinf] efficient linear algebra computations are esssential. Furthermore we need to be able to use automatic differentiation on the ELBO and also fast random number generation. `JAX` [@jax] is a high-performance numerical computing library that provides the necessary functionalities.`JAX` enables just-in-time (JIT) compilation for python code excelerating the performance computationally demanding programms, by using the accelerated linear algebra (XLA) compiler [@tensorflow]. Its API closely resembles what researchers are accustomed to with numpy [@numpy]. Theoretically, one could enhance scalability further by executing the program on different Backends. For example on a graphical processing unit (GPU) or a tensor processing unit (TPU) instead of a central processing unit (CPU), without altering the underlying code.
+
+For gradient processing and optimization we use the library `optax` [@optax] which is exclusively designed for `JAX`. In detail we use either `optax.adam` or `optax.adamw` depending if the `learning_rate` is a `schedule` or not. The function computes the parameter updates from their gradients for each optimization step. Furthermore as we use gradient clipping (`.clip()`), to enhance numerical stability during optimization, we make use of `optax`s `.chain()` to apply chainable update transformations.
+
+As previously mentioned in [Chapter @sec-m-lib], we employ the `networkx` [@networkx] `DiGraph` class for constructing, traversing, and visualizing the DAG. The class `DiGraph` allows to store nodes and edges with optional data. In a DAG we exculisvely have directed edges. A node can be a arbitrary `python` object with optinal key and value attributes. Edges are essentially links between the nodes that can also store data through key and value attributes. The class also provides several algorithms for DAGs, in our case we especially make use of the `topological_sort()` algorithm, to obtain a traversing order that respects the dependencies (hierarchy) of the DAG. 
+
+Although we haven't implemented any unit or integration tests thus far, the code features extensive docstrings that aid in comprehending the intended usage of arguments and functions.
