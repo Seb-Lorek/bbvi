@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import functools
 from functools import partial
 import copy
+import time 
 from typing import (
     List,
     Dict,
@@ -22,14 +23,6 @@ from typing import (
     NamedTuple,
     Callable,
     Union,
-)
-
-from .transform import (
-    log_transform,
-    exp_transform,
-    batched_jac_determinant,
-    log_cholesky_parametrization_to_tril,
-    cov_from_prec_chol
 )
 
 from ..model.model import (
@@ -55,6 +48,14 @@ from ..distributions.mvn_log import (
     mvn_log_cov
 )
 
+from .transform import (
+    log_transform,
+    exp_transform,
+    batched_jac_determinant,
+    log_cholesky_parametrization_to_tril,
+    cov_from_prec_chol
+)
+
 from .init_bbvi import (
     set_init_var_params,
     set_init_loc_scale,
@@ -62,24 +63,32 @@ from .init_bbvi import (
 )
 
 class BbviState(NamedTuple):
-    data: dict
+    data_train: dict
+    data_val: dict
     batches: list
-    num_obs: int
+    num_obs_train: int
+    num_obs_val: int 
     key: jax.random.PRNGKey
-    params: dict
     opt_state: Any
-    params_new: dict
-    elbo: jax.Array
+    params: dict
+    elbo_train: jax.Array
+    elbo_val: jax.Array
     grad: dict
+    it: int
 
 class EpochState(NamedTuple):
-    data: dict
+    data_train: dict
+    data_val: dict
+    num_obs_train: int
+    num_obs_val: int 
     elbo_best: jax.Array
     params_best: dict
     key: jax.random.PRNGKey
-    params: dict
     opt_state: Any
-    params_new: dict
+    params: dict
+    elbo_train: jax.Array
+    elbo_val: jax.Array
+    it: int
 
 class Bbvi:
     """
@@ -91,7 +100,8 @@ class Bbvi:
                  jitter_init: bool=True,
                  model_init: bool=False,
                  loc_prec: float=1.0,
-                 scale_prec: float=2.0) -> None:
+                 scale_prec: float=2.0, 
+                 verbose=True) -> None:
         self.graph = copy.deepcopy(graph)
         self.digraph = self.graph.digraph
         self.model = self.graph.model
@@ -99,13 +109,13 @@ class Bbvi:
         self.data = {}
         self.jitter_init = jitter_init
         self.model_init = model_init
+        self.verbose = verbose
         self.init_var_params = {}
         self.var_params = {}
         self.num_var_params = None
         self.trans_var_params = {}
         self.return_loc_params = {}
         self.elbo_hist = {}
-        self.elbo_hist_burn = {}
 
         self.set_data()
         self.set_var_params(loc_prec, 
@@ -258,14 +268,14 @@ class Bbvi:
         return dist.log_prob(value)
 
     def mc_logprob(self, 
-                   batch_data: Dict,
+                   data: Dict,
                    samples: Dict,
                    num_obs: int) -> jax.Array:
         """
         Calculate the Monte Carlo integral for the joint log-probability of the model.
 
         Args:
-            batch_data (Dict): A subsample of the data (mini-batch).
+            data (Dict): A subsample of the data.
             samples (Dict): Samples from the variational distribution.
             num_obs (int): Number of observations in the model.
 
@@ -293,7 +303,7 @@ class Bbvi:
                 for parent in parents:
                     edge = self.digraph.get_edge_data(parent, node)
                     if edge["role"] == "fixed":
-                        design_matrix = batch_data[parent]
+                        design_matrix = data[parent]
                         parents.remove(parent)
 
                 # Obtain all parameters of the linear predictor node must be defined in the 
@@ -347,7 +357,7 @@ class Bbvi:
 
                 # Calculate the log_lik
                 log_lik = Bbvi.loglik(init_dist, 
-                                      batch_data[node])
+                                      data[node])
                 # print("Log-lik:", log_lik, log_lik.shape)
                 # print("Mean log-lik", jnp.mean(log_lik, axis=-1), jnp.mean(log_lik, axis=-1).shape)
                 # print("Scaled log-lik", num_obs * jnp.mean(log_lik, axis=-1), jnp.mean(log_lik, axis=-1).shape)
@@ -357,133 +367,108 @@ class Bbvi:
         
         # print("Scaled log-lik", jnp.mean(scaled_log_lik), jnp.mean(scaled_log_lik).shape)
         # print("Log-priors", jnp.mean(log_priors), jnp.mean(log_priors).shape)
-        
+
         return jnp.mean(scaled_log_lik + log_priors)
 
     @staticmethod 
     def neg_entropy_unconstr(var_params: Dict,
                              samples_params: Dict,
                              samples_noise: Dict,
-                             var: str,
-                             num_var_samples: int,
-                             key: jax.random.PRNGKey) -> Tuple[Dict, Array]:
+                             var: str) -> Tuple[Dict, Array]:
         
         loc, log_cholesky_prec = var_params[var]["loc"], var_params[var]["log_cholesky_prec"]
         lower_tri = log_cholesky_parametrization_to_tril(log_cholesky_prec, d=loc.shape[0])
-        noise = mvn_sample_noise(key=key, 
-                                 shape=lower_tri.shape,
-                                 S=num_var_samples)
         s = mvn_precision_chol_sample(loc=loc, 
                                       precision_matrix_chol=lower_tri, 
-                                      noise=noise)
+                                      noise=samples_noise[var])
         l = mvn_precision_chol_log_prob(x=s, 
                                         loc=loc, 
                                         precision_matrix_chol=lower_tri)
         samples_params[var] = s
-        samples_noise[var] = noise
-        neg_entropy = jnp.mean(l, keepdims=True)
+        neg_entropy = jnp.mean(jnp.atleast_1d(l), keepdims=True)
 
-        return samples_params, samples_noise, neg_entropy
+        return samples_params, neg_entropy
 
     @staticmethod 
     def neg_entropy_posconstr(var_params: Dict, 
                                samples_params: Dict, 
                                samples_noise: Dict, 
-                               var: str, 
-                               num_var_samples: int,
-                               key: jax.random.PRNGKey) -> Tuple[Dict, Array]:
+                               var: str) -> Tuple[Dict, Array]:
         
         loc, log_cholesky_prec = var_params[var]["loc"], var_params[var]["log_cholesky_prec"]
         lower_tri = log_cholesky_parametrization_to_tril(log_cholesky_prec, d=loc.shape[0])
-        noise = mvn_sample_noise(key=key,
-                                 shape=lower_tri.shape,
-                                 S=num_var_samples)
         s = mvn_log_precision_chol_sample(loc=loc, 
                                           precision_matrix_chol=lower_tri, 
-                                          noise=noise)
+                                          noise=samples_noise[var])
         l = mvn_log_precision_chol_log_prob(x=s, 
                                             loc=loc, 
                                             precision_matrix_chol=lower_tri)
         samples_params[var] = s
-        samples_noise[var] = noise
-        neg_entropy = jnp.mean(l, keepdims=True)
 
-        return samples_params, samples_noise, neg_entropy
+        neg_entropy = jnp.mean(jnp.atleast_1d(l), keepdims=True)
+
+        return samples_params, neg_entropy
 
     # Update docstrings
     def lower_bound(self, 
                     var_params: Dict,
-                    batch_data: Dict,
+                    data: Dict,
                     num_obs: int,
-                    num_var_samples: int,
-                    key: jax.random.PRNGKey) -> Array:
+                    samples_noise: Dict) -> Array:
 
-        key, *subkeys = jax.random.split(key, len(var_params)+1)
         samples_params = {}
-        samples_noise = {}
         total_neg_entropy = jnp.array([])
         i = 0
         for kw in var_params.keys():
             if self.digraph.nodes[kw]["attr"]["param_space"] is None:
-                samples_params, samples_noise, neg_entropy = Bbvi.neg_entropy_unconstr(var_params, 
-                                                                                       samples_params,
-                                                                                       samples_noise, 
-                                                                                       kw, 
-                                                                                       num_var_samples,
-                                                                                       subkeys[i])
+                samples_params, neg_entropy = Bbvi.neg_entropy_unconstr(var_params, 
+                                                                        samples_params,
+                                                                        samples_noise, 
+                                                                        kw)                                                                           
                 total_neg_entropy = jnp.append(total_neg_entropy, neg_entropy, axis=0)
             elif self.digraph.nodes[kw]["attr"]["param_space"] == "positive":
-                samples_params, samples_noise, neg_entropy = Bbvi.neg_entropy_posconstr(var_params, 
-                                                                                        samples_params,
-                                                                                        samples_noise, 
-                                                                                        kw,
-                                                                                        num_var_samples, 
-                                                                                        subkeys[i])
+                samples_params, neg_entropy = Bbvi.neg_entropy_posconstr(var_params, 
+                                                                         samples_params,
+                                                                         samples_noise, 
+                                                                         kw)
                 total_neg_entropy = jnp.append(total_neg_entropy, neg_entropy, axis=0)
             i += 1
+
         # print(samples["tau2"], samples["eta2"])
         # print(total_neg_entropy)
-        mc_log_prob = self.mc_logprob(batch_data, samples_params, num_obs)
+
+        mc_log_prob = self.mc_logprob(data, 
+                                      samples_params, 
+                                      num_obs)
         elbo = mc_log_prob - jnp.sum(total_neg_entropy)
         
-        return - elbo, samples_noise
+        return - elbo
 
-    # experimental
-    def calc_control_variate(self, 
-                             var_params: Dict,
-                             batch_data: Dict,
-                             noise_samples: Dict,
-                             num_obs: int,
-                             key: jax.random.PRNGKey):
+    @staticmethod
+    def gen_noise(var_params, 
+                  num_var_samples, 
+                  key) -> Dict:
 
-        loc_params = {kw: value["loc"] for kw, value in var_params.items()}
-        log_chol_prec_params = {kw: value["log_cholesky_prec"] for kw, value in var_params.items()}
-        first = jax.grad(self.mc_logprob, argnums=1)(batch_data,
-                                                           loc_params,
-                                                           num_obs)
-        second = hessian(self.mc_logprob, argnums=1)(batch_data,
-                                                           loc_params,
-                                                           num_obs)
-        
-        diff = mvn_precision_chol_sample(loc, 
-                                        precision_chol,
-                                        noise)
+        samples_noise = {}
+        key, *subkeys = jax.random.split(key, len(var_params)+1)
 
-        jac_map = jax.jacfwd(mvn.mvn_precision_chol_sample, argnums=(0,1))
+        i = 0
+        for kw in var_params.keys():
+            samples_noise[kw] = mvn_sample_noise(key=subkeys[i],
+                                                 shape= var_params[kw]["loc"].shape,
+                                                 S=num_var_samples)
+            i += 1
 
-        mvn_precision_chol_sample
-        combined_second_order = second_order
-        grad_control = jax.tree_map(lambda x,y: x + y, first_order, combined_second_order)
-        grad_control = jax.tree_map(lambda x: jnp.mean(x), grad_control)
-        grad_control_mean = data_term + 0
-        
-        return jax.tree_map(lambda x,y: x - y, grad_control, grad_control_mean)
-
+        return samples_noise
+    
+    # Update Docstrings 
     def run_bbvi(self,
                  step_size: Union[Any, float]=1e-3,
+                 grad_clip: float=1,
                  threshold: float=1e-2,
-                 key_int: int=1,
+                 key_int: int=42,
                  batch_size: int=64,
+                 train_share: float=0.8,
                  num_var_samples=32,
                  chunk_size: int=1,
                  epochs: int=500) -> tuple:
@@ -493,6 +478,7 @@ class Bbvi:
         Args:
             step_size (Union[Any, float], optional): Step size (learning rate) of the SGD optimizer (Adam).
             Can also be a scheduler. Defaults to 1e-3.
+            grad_clip (float, optional): Float to determine the gradient clipping value.
             threshold (float, optional): Threshold to stop the optimization. Defaults to 1e-2.
             key_int (int, optional): Integer that is used as argument for PRNG in JAX. Defaults to 1.
             batch_size (int, optional): Batchsize, i.e. number of samples to use during SGD. Defaults to 64.
@@ -506,78 +492,101 @@ class Bbvi:
         """
 
         if type(step_size) is float:
-            optimizer = optax.adam(learning_rate=step_size)
+            optimizer = optax.chain(optax.clip(grad_clip), 
+                                    optax.adam(learning_rate=step_size))
         else:
-            optimizer = optax.adamw(learning_rate=step_size)
+            optimizer = optax.clip(optax.clip(grad_clip), 
+                                   optax.adamw(learning_rate=step_size))
         
         def bbvi_body(idx, bbvi_state):
             
             key, subkey = jax.random.split(bbvi_state.key)
-            
             funcs = [lambda i=i: bbvi_state.batches[i] for i in range(len(bbvi_state.batches))]
             batch_idx = jax.lax.switch(idx, funcs)
-            batch_data = jax.tree_map(lambda x: x[batch_idx], bbvi_state.data)
+            batch_data = jax.tree_map(lambda x: x[batch_idx], bbvi_state.data_train)
+            
+            # Generate noise samples 
+            samples_noise = Bbvi.gen_noise(bbvi_state.params,    
+                                           num_var_samples,   
+                                           subkey)
 
             # Note: num_var_samples is a global variable
-            lower_bound_grad_value = jax.value_and_grad(self.lower_bound, has_aux=True)
-            aux, grad = lower_bound_grad_value(bbvi_state.params_new,
-                                               batch_data,
-                                               bbvi_state.num_obs,
-                                               num_var_samples,
-                                               subkey)
-            neg_elbo, noise_samples = aux
-            #cv = self.calc_control_variate(bbvi_state.params_new,
-            #                               batch_data,
-            #                               noise_samples,
-            #                               bbvi_state.num_obs)
-            #grad_cv = jax.tree_map(lambda x,y: x - y, grad, cv) 
-            #replace with grad
+            # Grad of the (neg) ELBO
+            lower_bound_grad_value = jax.value_and_grad(self.lower_bound)
+            neg_elbo_train, grad = lower_bound_grad_value(bbvi_state.params,
+                                                          batch_data,
+                                                          bbvi_state.num_obs_train,
+                                                          samples_noise)
+
+            # Update the variational parameters
             updates, opt_state = optimizer.update(grad, 
                                                   bbvi_state.opt_state, 
-                                                  bbvi_state.params_new)
-            params_new = optax.apply_updates(bbvi_state.params_new, 
+                                                  bbvi_state.params)
+            params_new = optax.apply_updates(bbvi_state.params, 
                                              updates)
-            elbo = - neg_elbo
+            
+            # Calculate the ELBO for the validation data
+            neg_elbo_val = self.lower_bound(params_new,
+                                            bbvi_state.data_val,
+                                            bbvi_state.num_obs_val,
+                                            samples_noise)
 
-            return BbviState(bbvi_state.data,
+            # Store the ELBO                    
+            elbo_train = bbvi_state.elbo_train.at[bbvi_state.it].set(-neg_elbo_train)
+            elbo_val = bbvi_state.elbo_val.at[bbvi_state.it].set(-neg_elbo_val)
+
+            return BbviState(bbvi_state.data_train,
+                             bbvi_state.data_val,
                              bbvi_state.batches,
-                             bbvi_state.num_obs,
+                             bbvi_state.num_obs_train,
+                             bbvi_state.num_obs_val,
                              key,
-                             bbvi_state.params_new,
                              opt_state,
                              params_new,
-                             elbo,
-                             grad)
+                             elbo_train,
+                             elbo_val,
+                             grad, 
+                             bbvi_state.it + 1)
                 
         def epoch_body(epoch_state, scan_input):
-            key, subkey = jax.random.split(epoch_state.key)
-            num_obs = epoch_state.data["response"].shape[0]
-            rand_perm = jax.random.permutation(subkey, num_obs)         
+            key, *subkeys = jax.random.split(epoch_state.key, 3)
+
+            # Split data into train batches 
+            num_obs_train = epoch_state.data_train["response"].shape[0]
+            train_idx = jax.random.permutation(subkeys[0], num_obs_train)
+
             # Note: batch_size is a global variable
-            num_batches = num_obs // batch_size 
-            lost_obs = num_obs % batch_size
+            num_batches = num_obs_train // batch_size 
+            lost_obs = num_obs_train % batch_size
             if lost_obs > 0:
-                cut_rand_perm = jax.lax.slice_in_dim(rand_perm, start_index=0, limit_index=-lost_obs)
+                add_idx = jax.random.choice(subkeys[1], train_idx[:-lost_obs], (batch_size-lost_obs,), replace=False)
+                train_idx = jnp.append(train_idx, add_idx) 
+                batches = jnp.split(train_idx, (num_batches+1))
             else:
-                cut_rand_perm = rand_perm
-            batches = jnp.split(cut_rand_perm, num_batches)
-            
-            bbvi_state = BbviState(epoch_state.data,
+                batches = jnp.split(train_idx, num_batches)
+
+            bbvi_state = BbviState(epoch_state.data_train,
+                                   epoch_state.data_val,
                                    batches,
-                                   num_obs,
+                                   epoch_state.num_obs_train,
+                                   epoch_state.num_obs_val,
                                    key,
-                                   epoch_state.params,
                                    epoch_state.opt_state,
-                                   epoch_state.params_new,
-                                   jnp.array(0.0),
-                                   epoch_state.params)
+                                   epoch_state.params,
+                                   epoch_state.elbo_train,
+                                   epoch_state.elbo_val,
+                                   epoch_state.params, 
+                                   epoch_state.it)
 
             # Note: batch_size is a global variable 
             bbvi_state = jax.lax.fori_loop(0, 
-                                           num_obs // batch_size, 
+                                           len(batches), 
                                            bbvi_body, 
                                            bbvi_state)
             
+            # The current elbo and its param configuration
+            curr_elbo = bbvi_state.elbo_val[bbvi_state.it - 1]
+
             # Choose max ELBO here and pass to EpochState 
             def true_fn(params, elbo, params_best, elbo_best):
                 return params, elbo
@@ -585,21 +594,26 @@ class Bbvi:
             def false_fn(params, elbo, params_best, elbo_best):
                 return params_best, elbo_best
             
-            params_best, elbo_best = jax.lax.cond(bbvi_state.elbo > epoch_state.elbo_best,
+            params_best, elbo_best = jax.lax.cond(curr_elbo > epoch_state.elbo_best,
                                                   true_fn,
                                                   false_fn,
                                                   bbvi_state.params,
-                                                  bbvi_state.elbo,
+                                                  curr_elbo,
                                                   epoch_state.params_best, 
                                                   epoch_state.elbo_best)
-            
-            return EpochState(epoch_state.data,
+
+            return EpochState(epoch_state.data_train,
+                              epoch_state.data_val,
+                              epoch_state.num_obs_train,
+                              epoch_state.num_obs_val,
                               elbo_best,
                               params_best,
                               bbvi_state.key,
-                              bbvi_state.params,
                               bbvi_state.opt_state,
-                              bbvi_state.params_new), (bbvi_state.elbo, bbvi_state.grad)
+                              bbvi_state.params,
+                              bbvi_state.elbo_train,
+                              bbvi_state.elbo_val, 
+                              bbvi_state.it), (curr_elbo, bbvi_state.grad)
 
         @partial(jax.jit, static_argnums=0)
         def jscan(chunk_size: int, epoch_state: EpochState) -> Tuple[EpochState, jnp.array]:
@@ -615,37 +629,69 @@ class Bbvi:
         if self.jitter_init:
             key, subkey = jax.random.split(key)
             self.init_var_params = add_jitter(self.init_var_params, 
-                                              subkey)
+                                              subkey)                                    
 
+        # Initialize the optimizer 
         opt_state = optimizer.init(self.init_var_params)
 
-        epoch_state = EpochState(self.data,
+        # Split data into train and validation, shuffle first
+        num_obs_train = round(self.num_obs*train_share)
+        num_obs_val = self.num_obs - num_obs_train
+        lost_obs = num_obs_train % batch_size
+        if lost_obs > 0:
+            batches = num_obs_train//batch_size + 1
+        else:
+            batches = num_obs_train//batch_size
+        key, subkey = jax.random.split(key)
+        rand_perm = jax.random.permutation(subkey, self.num_obs) 
+        train_idx = rand_perm[:num_obs_train]   
+        val_idx = rand_perm[num_obs_train:]
+        data_train = jax.tree_map(lambda x: x[train_idx], self.data)
+        data_val = jax.tree_map(lambda x: x[val_idx], self.data)
+
+        epoch_state = EpochState(data_train,
+                                 data_val, 
+                                 num_obs_train, 
+                                 num_obs_val,
                                  jnp.array(-jnp.inf),
                                  self.init_var_params,
                                  key,
-                                 self.init_var_params,
                                  opt_state,
-                                 self.init_var_params)
+                                 self.init_var_params,
+                                 jnp.zeros(epochs*batches),
+                                 jnp.zeros(epochs*batches),
+                                 0)
         
-        elbo_history = jnp.array([])
+        elbo_epoch_hist = jnp.array([])
         grad_history = []
+        dur = jnp.zeros(epochs // chunk_size)
 
-        print("Start optimization ...")
+        if self.verbose:
+            print("Start optimization ...")
 
-        for _ in range(epochs // chunk_size):
+        for i in range(epochs // chunk_size):
+            start = time.time()
             epoch_state, chunk = jscan(chunk_size, epoch_state)
-            elbo_history = jnp.append(elbo_history, chunk[0], axis=0)
+            elbo_epoch_hist = jnp.append(elbo_epoch_hist, chunk[0], axis=0)
             grad_history.append(chunk[1])
-            elbo_delta = abs(elbo_history[-1] - elbo_history[-200]) if len(elbo_history) > 200 else jnp.inf
+            chunk_dur = time.time() - start
+            elbo_delta = abs(elbo_epoch_hist[-1] - elbo_epoch_hist[-200]) if len(elbo_epoch_hist) > 200 else jnp.inf
+            dur = dur.at[i].set(chunk_dur)
             if elbo_delta < threshold:
                 break
+        
+        if self.verbose:
+            print("Finished optimization.")
 
-        print("Finished optimization.")
-
-        self.elbo_hist["elbo"] = elbo_history
+        self.elbo_hist["elbo_epoch"] = elbo_epoch_hist
+        self.elbo_hist["epoch"] = jnp.arange(elbo_epoch_hist.shape[0])
         self.elbo_hist["grad"] = grad_history
-        self.elbo_hist["epoch"] = jnp.arange(elbo_history.shape[0])
+        self.elbo_hist["elbo_full_train"] = epoch_state.elbo_train
+        self.elbo_hist["elbo_full_val"] = epoch_state.elbo_val
+        self.elbo_hist["iteration"] = jnp.arange(epoch_state.it)
         self.var_params = epoch_state.params_best
+        self.it = epoch_state.it
+        self.dur = dur
         self.set_trans_var_params()
 
     def set_trans_var_params(self):
@@ -680,10 +726,11 @@ class Bbvi:
 
     def plot_elbo(self):
         """
-        Method to visualize the progression of the ELBO during the optimization.
+        Method to visualize the progression of the ELBO during the optimization
+        considering only epochs.
         """
 
-        plt.plot(self.elbo_hist["epoch"], self.elbo_hist["elbo"])
+        plt.plot(self.elbo_hist["epoch"], self.elbo_hist["elbo_epoch"])
         plt.title("Progression of the ELBO during optimization")
         plt.xlabel("Epoch")
         plt.ylabel("ELBO")
