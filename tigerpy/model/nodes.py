@@ -459,7 +459,7 @@ class ModelGraph:
         else: 
             return param
 
-    def visualize_graph(self) -> None:
+    def visualize_graph(self, savepath: Union[None, str]=None) -> None:
         """
         Method to visualize the DAG.
         """
@@ -541,4 +541,5 @@ class ModelGraph:
                                      ax=ax, 
                                      font_size=8)
 
-        plt.show()
+        if savepath is not None:
+            plt.savefig(savepath)
