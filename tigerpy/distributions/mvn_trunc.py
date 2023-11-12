@@ -1,5 +1,5 @@
 """
-Truncated Normal Distribution.
+Truncated multivariate normal distribution.
 """
 
 import jax

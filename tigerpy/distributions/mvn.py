@@ -1,5 +1,5 @@
 """
-Multivariate normal distribution based on chol.
+Multivariate normal distribution.
 """
 
 import jax
