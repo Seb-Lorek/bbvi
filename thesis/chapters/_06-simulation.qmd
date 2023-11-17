@@ -4,70 +4,145 @@ bibliography: ["bib/references.bib", "bib/packages.bib"]
 
 # Simulation study {#sec-sim}
 
-Simulation studies are a crucial tool in the toolkit of a statistician, enabling the assessment of statistical properties, f.e. bias, due to knowing the underlying data generating process. Within this chapter, we will introduce and examine the outcomes of several simulation studies designed to explore various facets of BBVI. During the whole process of designing, conducting and presenting the study we follow the rationale of @Morris2019. The authors propose in their article  a structured approach denoted by the acronym ADEMP, which stands for Aims, Data-generating mechanisms, Estimands and other targets, Methods, and Performance measures [@Morris2019, p. 2074]. For each of the simulation studies, we will provide a overview of each of these aspects.
+Simulation studies are a crucial tool in the toolkit of a statistician, enabling the assessment of statistical properties, f.e. bias, due to knowing the underlying data generating process. Moreover, they enable the examination of method behavior by altering various aspects of the data and/or method, as already exemplified in [Chapter @sec-elbo-conv]. Within this chapter, we will introduce and examine the outcomes of several simulation studies designed to explore various facets of BBVI. During the whole process of designing, conducting and presenting the study we followed the rationale of @Morris2019. The authors propose in their article a structured approach denoted by the acronym ADEMP, which stands for Aims, Data-generating mechanisms, Estimands and other targets, Methods, and Performance measures [@Morris2019, p. 2074]. For every simulation study, we'll provide an overview of all these different aspects.
 
-## Study design {#sec-study-d}
+## Consistency study {#sec-cons-study}
 
-This section will be split up/ subsumed into to the individual simulation study sections. 
+In our initial simulation study, the aim is to assess whether the implemented inference algorithm functions as expected. We seek to demonstrate that the posterior mean parameters of the variational distribution converge in a mean-square fashion to true fixed parameters within a frequentist context, for Bayesian linear regression and Bayesian logistic regression. Hence that the posterior mean parameter estimates are consistent. Several authors have previously illustrated that VI yields consistent parameter estimates, when considering the posterior means of the factors in the variational distribution as $n_{\text{obs}}$ approaches infinity [You et al. 2014, Ormerod et al. 2015]. Assuming the implementation works as anticipated, implies that we would obtain consistent estimates.
 
-### Aims
+We will conduct this study for two prevalent models being the Bayesian linear regression model ($M_{1}$) and the Bayesian logistic regression model ($M_{2}$). For the data-generating mechanism we generate pseudo-random data for one covariate from a uniform distribution, parameterized by its minimum and maximum value. In detail we use $x \sim \mathcal{U}(-3,3)$. After that we genetrate the data for the linear predictors by applying the corresponding parametric functions on the random covariate vector. Finally we obtain samples from the response distribution. For $M_{1}$, this involves sampling noise from a zero-mean normal distribution, parameterized by its scale with $\sigma = 1$, resulting in $\epsilon \sim \mathcal{N}(0,1)$, and adding this noise to the location. On the other hand, for $M_{2}$, we utilize the logit link function to directly sample from a Bernoulli distribution. We employ the following parametric functions for the study:
 
-- Illustrate the effectiveness of the BBVI algorithm by establishing that the parameters converge in a mean-square fashion to their true values within a frequentist context, for Bayesian linear regression and Bayesian logistic regression.
-- Compare the posterior distributions of BBVI and MCMC via density plots.
-- We aim to assess the comparative accuracy of BBVI against MCMC in approximating the posterior distribution over a predefined time window. This analysis will focus on location-scale regression, incorporating additive linear predictors.
-- Compare the approximation of smooth functions and the related (gloabl) inverse smoothing parameters from BBVI and MCMC.
+1. Linear: $f(x) = \beta_{0} + \beta_{1}x$
+2. Quadratic $f(x) = \beta_{0} + \beta_{1}x + \beta_{2}x^{2}$
 
-### Data generating mechanism 
+The parameterizations for the corresponding functions are given in Table \ref{tbl-1}.
 
-- Generate random data set with different relationships in the linear predictors of interest.
-- Start by generating random data for the regressor from a uniform distribution, parametrized by its minimum and maximum value. 
-- After this we will generate the data for the linear predictors by applying functions on the random covariate vector, to model the additive structure in the linear predictor.
-- Finally, conditional on the parameters of the response distribution we sample the response after applying the inverse link function on the additive linear predictor.
+\begin{table}[htbp]
+\centering
+\caption{Parameterization of the data-generating functions, for the consistency study.}
+    \begin{tabular}{ll}
+        \toprule
+        & $\betavec$ \\
+        \midrule
+        Linear & $[1.0, 2.0]^{\mathrm{T}}$ \\
+        Quadratic & $[3.0, 0.2, -0.5]^{\mathrm{T}}$ \\
+        \bottomrule
+    \end{tabular}
+\label{tbl-1}
+\end{table}
 
-### Estimand/target of analysis 
+We use the quadratic function for the location of $M_{1}$ and the linear function for the log-odds of $M_{2}$^[The parameterization results in a relatively balanced binary response vector $\frac{1}{n_{\text{obs}}}\sum_{i}^{n_{\text{obs}}}y_{i} \approx 0.58$.]. To asses the convergence over varying samples sizes $n_{\text{obs}}$ we decide for the following four samples sizes: 500, 1.000, 5.000, 10.000. The choice for relatively large observation sizes is deliberate, as VI is typically used in the context of larger datasets. 
 
-- Start targeting estimands for fixed linear predictor specifications.
-- Then we target the posterior distributions of MCMC and BBVI.
-- Finally we target smooth functions and the corresponding direction of the (inverse) smoothing parameter. 
+Our Estimands in this study are the fixed known coefficients in Table \ref{tbl-1} and additionally $\sigma = 1$ for $M_{1}$. The method under investigation is clearly the BBVI algorithm. We don't use a model specific initialization and set $\muvec_{j}=\zerovec$, $\diag(\Lbold_{j}) = 2*\onevec$ for the scale parameter ($\sigma$) and $\diag(\Lbold_{j}) = \onevec$ else. In this context, our performance measures^[See @Morris2019 [p. 2086, Table 6] for a definition of common performance measures, including those that we used.] include bias, empirical standard error (EmpSE), and their corresponding Monte Carlo standard errors (Monte Carlo SEs). Setting an appropriate number of simulation runs $n_{\text{sim}}$ is crucial. We adhere to the heuristic that aims for Monte Carlo SEs to be less than 0.01. Initial investigations showed that this is already the case for $n_{\text{sim}}=100$, thus we conservatively use $n_{\text{sim}}=200$. The simulation study yielded an outcome without any errors, warnings or missing estimands.
 
-### Methods 
+Kernel density plots of the posterior means for the parameters of $M_{1}$ are provided in @fig-kdeplot-loc and @fig-kdeplot-scale. We notice a clear trend of convergence as the sample size increases, tending towards a point mass at the true values of the parameters. Additionally, there appears to be no significant presence of outliers, indicating satisfactory convergence without major issues. In the kernel density plot of the scale shown in @fig-kdeplot-scale we can notice a slightly larger spread for low observation sample sizes. 
 
-- Compare estimands to true fixed coefficients.
-- Use kernel density plots as a visual tool and the Kullback-Leibler divergence as a formal measure to distinguish closeness to the "true" posterior.
-- Compare estimated smooth functions to the true underlying function and assess the direction of the (inverse) smoothing parameter. 
+![Kernel density plots of the posterior means for location parameters of $M_{1}$, true parameters given by $\betavec = [3.0, 0.2, -0.5]^{\mathrm{T}}$.](assets/plots/plot8.pdf){width=80% fig-scap="Kernel density plots for location parameters of $M_{1}$." #fig-kdeplot-loc}
 
-### Performance measures
+![Kernel density plots of the posterior means for scale parameter of $M_{1}$, true parameter given by $\sigma=1.0$](assets/plots/plot9.pdf){width=80% fig-scap="Kernel density plots for scale parameter of $M_{1}$." #fig-kdeplot-scale}
 
-- Bias, EmpSE (also boxplots) and their related Monte Carlo SE.
-- Kullback-Leibler divergence.
-- MSE and its related Monte Carlo SE.
+Ideally, we would anticipate observing zero bias across various $n_{\text{obs}}$ sizes, accompanied by a reduction in EmpSE for growing $n_{\text{obs}}$. This is exactly what we obseve in Table \ref{tbl-2} for the performance measures.
 
-## Consistency study 
+\begin{table}[htbp]
+\centering
+\caption{Simulation results for the parameters of $M_{1}$.}
+\begin{threeparttable}
+    \begin{tabular}{lrrrrrrrr}
+        \toprule
+         & \multicolumn{4}{c}{Bias} & \multicolumn{4}{c}{EmpSE} \\
+        \cmidrule(lr){2-5} 
+        \cmidrule(lr){6-9} 
+        $n_{\text{obs}}$ & 500 & 1000 & 5000 & 10000 & 500 & 1000 & 5000 & 10000 \\
+        \midrule
+        $\beta_{0}$ & -0.0412 & 0.0123 & 0.0004 & 0.0018 & 0.0780 & 0.0478 & 0.0246 & 0.0145 \\[-4pt]
+         & {\tiny(0.0110)} & {\tiny(0.0068)} & {\tiny(0.0035)} & {\tiny(0.0022)} & {\tiny(0.0079)} & {\tiny(0.0048)} & {\tiny(0.0025)} & {\tiny(0.0015)} \\
+        $\beta_{1}$ & -0.0037 & 0.0034 & -0.0015 & 0.0011 & 0.0293 & 0.0244 & 0.0079 & 0.0068 \\[-4pt]
+        & {\tiny(0.0041)} & {\tiny(0.0035)} & {\tiny(0.0011)} & {\tiny(0.0010)} & {\tiny(0.0030)} & {\tiny(0.0002)} & {\tiny(0.0001)} & {\tiny(0.0001)} \\
+        $\beta_{2}$ & 0.0093 & -0.0029 & -0.0006 & 0.0006 & 0.0194 & 0.0158 & 0.0062 & 0.0046 \\[-4pt]
+        & {\tiny(0.0027)} & {\tiny(0.0022)} & {\tiny(0.0009)} & {\tiny(0.0006)} & {\tiny(0.0020)} & {\tiny(0.0016)} & {\tiny(0.0006)} & {\tiny(0.0005)} \\
+        $\sigma$ & 0.0085 & -0.0060 & -0.0014 & -0.0006 & 0.0356 & 0.0223 & 0.0117 & 0.0077 \\[-4pt]
+        & {\tiny(0.0050)} & {\tiny(0.0032)} & {\tiny(0.0017)} & {\tiny(0.0011)} & {\tiny(0.0036)} & {\tiny(0.0023)} & {\tiny(0.0012)} & {\tiny(0.0008)} \\
+        \bottomrule
+    \end{tabular}
+    \begin{tablenotes}
+      \footnotesize	
+      \item Corresponding Monte Carlo SEs are provided below in parentheses; $n_{\text{sim}}=200$.
+    \end{tablenotes}
+\end{threeparttable}
+\label{tbl-2}
+\end{table}
 
-Show that the implementation of the BBVI algorithm results in consitent parameter estimates when considering the mean of the variational distribution. 
+For the parameters of $M_{2}$, we also observe a convergence toward the true fixed parameters. However, with smaller sample sizes, a slight negative shift is visible, a common occurrence in logistic regression [REF]. This shift however gradually diminishes as the sample size increases. Furthermore seems the spread somewhat larger in @fig-kdeplot-logit compared to @fig-kdeplot-loc.
 
-Discuss ADEMP for this study.
+![Kernel density plots of the posterior means for logit parameters of $M_{2}$, true parameters given by $\betavec = [1.0, 2.0]^{\mathrm{T}}$.](assets/plots/plot10.pdf){width=80% fig-scap="Kernel density plots for logit parameters of $M_{2}$." #fig-kdeplot-logit}
 
-Show DGP.
+The findings above are of course also visible for the bias and EmpSE of $\beta_{0}$ and $\beta_{1}$ in Table \ref{tbl-3}. Never the less the bias tend towards zero for growing sample sizes. The EmpSE once more demonstrates a convergence toward zero, however being larger compared to what we observed in \ref{tbl-2}.
 
+\begin{table}[htbp]
+\centering
+\caption{Simulation results for the parameters of $M_{2}$.}
+\begin{threeparttable}
+    \begin{tabular}{lrrrrrrrr}
+        \toprule
+         & \multicolumn{4}{c}{Bias} &\multicolumn {4}{c}{EmpSE} \\
+        \cmidrule(lr){2-5} 
+        \cmidrule(lr){6-9}
+        $n_{\text{obs}}$ & 500 & 1000 & 5000 & 10000 & 500 & 1000 & 5000 & 10000 \\
+        \midrule
+        $\beta_{0}$ & -0.0636 & -0.0886 & -0.0507 & -0.0258 & 0.2308 & 0.1740 & 0.0774 & 0.0603 \\[-4pt]
+        & {\tiny(0.0326)} & {\tiny(0.0246)} & {\tiny(0.0110)} & {\tiny(0.0085)} & {\tiny(0.0233)} & {\tiny(0.0176)} & {\tiny(0.0078)} & {\tiny(0.0061)} \\
+        $\beta_{1}$ & -0.0249 & -0.0670 & -0.0444 & -0.0092 & 0.2631 & 0.2048 & 0.0829 & 0.0638 \\[-4pt]
+        & {\tiny(0.0372)} & {\tiny(0.0290)} & {\tiny(0.0117)} & {\tiny(0.0090)} & {\tiny(0.0266)} & {\tiny(0.0207)} & {\tiny(0.0084)} & {\tiny(0.0064)} \\
+        \bottomrule
+    \end{tabular}
+    \begin{tablenotes}
+      \footnotesize	
+      \item Corresponding Monte Carlo SEs are provided below in parentheses; $n_{\text{sim}}=200$.
+    \end{tablenotes}
+\end{threeparttable}
+\label{tbl-3}
+\end{table}
 
-![](assets/plots/plot8.pdf){width=80%}
-
-![](assets/plots/plot9.pdf){width=80%}
-
-
-![](assets/plots/plot10.pdf){width=80%}
-
-
+The results are promising as there is no indication of an implementation error causing systematic errors and, consequently, biased estimates. Remarkably, VI seems to accurately estimate the posterior means of parameters in common regression models with quite high accuracy.
 
 ## Posterior density study I
 
-After that we study the posterior results from BBVI compared to MCMC for a simple Bayesian regression model.
+In our upcoming study, we aim to visually evaluate the outcomes derived from fitting a smooth curve, with Bayesian P-splines, using BBVI and then compare these results with those obtained through MCMC. We are particularly interested in comparing the fit achieved by utilizing the posterior means of the model parameters and the corresponding posterior distributions. Are the results closely comparable, or does BBVI yield notably different outcomes compared to MCMC?
+
+The data-generating mechanism was chosen to be,
+
+$$
+\begin{split}
+    y_{i} | x_{i} &\sim \mathcal{N}(f(x_{i}), 1.5^{2}) \\
+    f(x_{i}) &= 3.0 + 1.75 \sin(1.5x_{i}) \\
+    x_{i} &\sim \mathcal{U}(-10,10), \ i=1, \dots, 1000
+\end{split}
+$$
+
+which we now denote as data generating process (DGP). For the obervation sample size we use $n_{\text{obs}}=1000$. We slightly heightened the frequency of the $\sin$ function to augment the complexity of estimating the function. The target here is to visually asses the fit of the function and compare the posterior distributions of MCMC and BBVI. For estimation of the posterior distribution with BBVI we again use `tigerpy` and for MCMC we use `liesel` [@Riebl2022].
+
+::: {layout="[[50,-5,50]]"}
+
+![Plot of the DGP, mean visualized by the solid line and 95% confidence band by the dashed line.](assets/plots/plot11.pdf){#fig-sim2-dgp}
+
+![Plot of the DGP and the estimated smooth functions of BBVI and MCMC using the posterior mean.](assets/plots/plot12.pdf){#fig-sim2-post-means}
+
+:::
+
+![](assets/plots/plot13.pdf){width=80% #fig-sim2-fixed}
+
+![](assets/plots/plot14.pdf){width=80% #fig-sim2-smooth}
+
+![](assets/plots/plot15.pdf){width=80% #fig-sim2-tau2}
+
+![](assets/plots/plot16.pdf){width=80% #fig-sim2-sig}
 
 ## Posterior density study II
 
 Now we will compare BBVI with MCMC for a location-scale regresion model in terms of the approximation measured by the KL-divergence.
 
+In this study we also have a target. 
+
 ## MSE study
 
-Finally we will compare 
+Finally we will compare MSE for different complex function for BBVI and MCMC in reference to @Lang2004.
