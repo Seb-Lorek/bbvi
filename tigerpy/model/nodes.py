@@ -543,3 +543,5 @@ class ModelGraph:
 
         if savepath is not None:
             plt.savefig(savepath)
+        else:
+            plt.show()

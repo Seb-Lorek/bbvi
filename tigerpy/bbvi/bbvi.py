@@ -12,6 +12,7 @@ import tensorflow_probability.substrates.numpy.distributions as tfnd
 
 import networkx as nx
 import matplotlib.pyplot as plt
+import seaborn as sns
 import functools
 from functools import partial
 import copy
@@ -418,7 +419,7 @@ class Bbvi:
 
         samples_params = {}
         total_neg_entropy = jnp.array([])
-        i = 0
+
         for kw in var_params.keys():
             if self.digraph.nodes[kw]["attr"]["param_space"] is None:
                 samples_params, neg_entropy = Bbvi.neg_entropy_unconstr(var_params, 
@@ -432,7 +433,6 @@ class Bbvi:
                                                                          samples_noise, 
                                                                          kw)
                 total_neg_entropy = jnp.append(total_neg_entropy, neg_entropy, axis=0)
-            i += 1
 
         # print(samples["tau2"], samples["eta2"])
         # print(total_neg_entropy)
@@ -452,51 +452,38 @@ class Bbvi:
         samples_noise = {}
         key, *subkeys = jax.random.split(key, len(var_params)+1)
 
-        i = 0
-        for kw in var_params.keys():
+        for i, kw in enumerate(var_params.keys()):
             samples_noise[kw] = mvn_sample_noise(key=subkeys[i],
                                                  shape= var_params[kw]["loc"].shape,
                                                  S=num_var_samples)
-            i += 1
 
         return samples_noise
     
     # Update Docstrings 
     def run_bbvi(self,
-                 step_size: Union[Any, float]=1e-3,
+                 key: jax.random.PRNGKey,
+                 learning_rate: Union[Any, float]=1e-3,
                  grad_clip: float=1,
                  threshold: float=1e-2,
-                 key_int: int=42,
                  batch_size: int=64,
                  train_share: float=0.8,
                  num_var_samples=32,
                  chunk_size: int=1,
                  epochs: int=500) -> tuple:
         """
-        Method to start the stochastic gradient optimization. The implementation uses Adam.
-
-        Args:
-            step_size (Union[Any, float], optional): Step size (learning rate) of the SGD optimizer (Adam).
-            Can also be a scheduler. Defaults to 1e-3.
-            grad_clip (float, optional): Float to determine the gradient clipping value.
-            threshold (float, optional): Threshold to stop the optimization. Defaults to 1e-2.
-            key_int (int, optional): Integer that is used as argument for PRNG in JAX. Defaults to 1.
-            batch_size (int, optional): Batchsize, i.e. number of samples to use during SGD. Defaults to 64.
-            num_var_samples (int, optional): Number of variational samples used for the Monte Carlo integration. Defaults to 64.
-            chunk_size (int, optional): Chunk sizes over which jax.lax.scan scans, 1 results in a classic for loop. Defaults to 1.
-            epoch (int, optional): Number of iterations loops of the optimization algorithm such that 
-            the algorithm has iterated each time through the entire dataset. Defaults to 500.
-
-        Returns:
-            Tuple: Last ELBO (jnp.float32) and the optimized variational parameters (dict).
+        Method to run the stochastic gradient optimization algorithm. 
+        The implementation uses Adam.
         """
+        # Store a key to obtain the posterior samples 
+        key, subkey = jax.random.split(key)
+        self.post_samples_key = subkey
 
-        if type(step_size) is float:
+        if type(learning_rate) is float:
             optimizer = optax.chain(optax.clip(grad_clip), 
-                                    optax.adam(learning_rate=step_size))
+                                    optax.adam(learning_rate=learning_rate))
         else:
             optimizer = optax.clip(optax.clip(grad_clip), 
-                                   optax.adamw(learning_rate=step_size))
+                                   optax.adamw(learning_rate=learning_rate))
         
         def bbvi_body(idx, bbvi_state):
             
@@ -622,9 +609,7 @@ class Bbvi:
                           jax.tree_map(lambda x: jnp.broadcast_to(x, shape=(chunk_size, x.shape[0])), epoch_state.params))
             new_state, chunk = jax.lax.scan(epoch_body, epoch_state, scan_input)
 
-            return new_state, chunk
-
-        key = jax.random.PRNGKey(key_int)
+            return new_state, chunk  
 
         if self.jitter_init:
             key, subkey = jax.random.split(key)
@@ -729,9 +714,38 @@ class Bbvi:
         Method to visualize the progression of the ELBO during the optimization
         considering only epochs.
         """
+        
+        sns.set_theme(style="whitegrid")
 
         plt.plot(self.elbo_hist["epoch"], self.elbo_hist["elbo_epoch"])
         plt.title("Progression of the ELBO during optimization")
         plt.xlabel("Epoch")
         plt.ylabel("ELBO")
         plt.show() 
+
+        sns.reset_orig()
+
+    def get_posterior_samples(self, 
+                              sample_shape: Tuple) -> Dict[str, jax.Array]:
+        post_sample = {}
+        key = self.post_samples_key
+        for kw in self.var_params:
+            key, subkey = jax.random.split(key)
+            if self.digraph.nodes[kw]["attr"]["param_space"] is None:
+                loc = self.var_params[kw]["loc"]
+                lower_tri = log_cholesky_parametrization_to_tril(self.var_params[kw]["log_cholesky_prec"], 
+                                                                 d=loc.shape[0])
+                cov = cov_from_prec_chol(lower_tri)
+                dist = tfjd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=cov)
+                samples = dist.sample(sample_shape=sample_shape, seed=subkey)
+                post_sample[kw] = samples
+            elif self.digraph.nodes[kw]["attr"]["param_space"] == "positive":
+                loc = self.var_params[kw]["loc"]
+                lower_tri = log_cholesky_parametrization_to_tril(self.var_params[kw]["log_cholesky_prec"], 
+                                                                 d=loc.shape[0])
+                cov = cov_from_prec_chol(lower_tri)
+                dist = tfjd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=cov)
+                samples = dist.sample(sample_shape=sample_shape, seed=subkey)
+                post_sample[kw] = jnp.exp(samples)
+
+        return post_sample 
