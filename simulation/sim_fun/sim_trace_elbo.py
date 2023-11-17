@@ -7,7 +7,6 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
 import os
 import time 
 import sys
@@ -22,21 +21,21 @@ import tigerpy.bbvi as bbvi
 # Use distributions from tensorflow probability
 import tensorflow_probability.substrates.jax.distributions as tfjd
 
-# Set the random seed for numpy 
-rng = np.random.default_rng(42)
-
-# Create a jax.array that stores all keys
-keys = jnp.arange(7)
+# Create a jax key
+# seed generated via secrets.randbits(32) 
+key = jax.random.PRNGKey(2829805258)
 
 # Sample size and true parameters
 n = 1000
-true_beta = np.array([1.0, 2.0])
+true_beta = jnp.array([1.0, 2.0])
 true_sigma = 1.0
 
+key, *subkeys = jax.random.split(key, 3)
+
 # Data-generating process
-x0 = rng.uniform(size=n)
-X_mat = np.column_stack([np.ones(n), x0])
-eps = rng.normal(scale=true_sigma, size=n)
+x0 = jax.random.uniform(subkeys[0], (n,))
+X_mat = jnp.column_stack([jnp.ones(n), x0])
+eps = tfjd.Normal(loc = 0.0, scale=true_sigma).sample((n,), subkeys[1])
 response_vec = X_mat @ true_beta + eps
 
 """
@@ -61,7 +60,7 @@ beta_scale = tiger.Hyper(100.0,
 beta_dist = tiger.Dist(tfjd.Normal, 
                        loc=beta_loc, 
                        scale=beta_scale)
-beta = tiger.Param(value=np.array([0.0, 0.0]), 
+beta = tiger.Param(value=jnp.array([0.0, 0.0]), 
                    distribution=beta_dist, 
                    name="beta")
 
@@ -105,7 +104,7 @@ beta_dist = tiger.Dist(tfjd.Normal,
                        loc=beta_loc, 
                        scale=beta_scale)
 # Change beta mean init to 0.5
-beta = tiger.Param(value=np.array([0.5, 0.5]), 
+beta = tiger.Param(value=jnp.array([0.5, 0.5]), 
                    distribution=beta_dist, 
                    name="beta")
 
@@ -150,7 +149,7 @@ beta_dist = tiger.Dist(tfjd.Normal,
                        loc=beta_loc, 
                        scale=beta_scale)
 # Set beta mean again to jnp.zeros
-beta = tiger.Param(value=np.array([0.0, 0.0]), 
+beta = tiger.Param(value=jnp.array([0.0, 0.0]), 
                    distribution=beta_dist, 
                    name="beta")
 
@@ -183,13 +182,16 @@ m3 = tiger.Model(response=response_vec,
 graph3 = tiger.ModelGraph(model=m3)
 graph3.build_graph()
 
+# Split the key 
+key, subkey = jax.random.split(key)
+
 # Run the inference
 q1 = bbvi.Bbvi(graph=graph1, 
                jitter_init=False, 
                verbose=False)
-q1.run_bbvi(step_size=0.01,
+q1.run_bbvi(key=subkey,
+            learning_rate=0.01,
             threshold=1e-2,
-            key_int=keys[0],
             batch_size=128,
             num_var_samples=64,
             chunk_size=50,
@@ -198,9 +200,9 @@ q1.run_bbvi(step_size=0.01,
 q2 = bbvi.Bbvi(graph=graph2, 
                jitter_init=False, 
                verbose=False)
-q2.run_bbvi(step_size=0.01,
+q2.run_bbvi(key=subkey,
+            learning_rate=0.01,
             threshold=1e-2,
-            key_int=keys[1],
             batch_size=128,
             num_var_samples=64,
             chunk_size=50,
@@ -209,9 +211,9 @@ q2.run_bbvi(step_size=0.01,
 q3 = bbvi.Bbvi(graph=graph3, 
                jitter_init=False, 
                verbose=False)
-q3.run_bbvi(step_size=0.01,
+q3.run_bbvi(key=subkey,
+            learning_rate=0.01,
             threshold=1e-2,
-            key_int=keys[2],
             batch_size=128,
             num_var_samples=64,
             chunk_size=50,
@@ -231,26 +233,46 @@ fig, ax = plt.subplots(figsize=(8,6))
 
 ax.plot(q1.elbo_hist["epoch"], 
         q1.elbo_hist["elbo_epoch"], 
-        alpha = 0.8,
+        alpha = 0.6,
         linewidth=1,
         color=sns.color_palette("colorblind")[0],
         label="run 1")
 ax.plot(q2.elbo_hist["epoch"], 
         q2.elbo_hist["elbo_epoch"], 
-        alpha = 0.8, 
+        alpha = 0.6, 
         linewidth=1, 
         color=sns.color_palette("colorblind")[1],
         label="run 2")
 ax.plot(q3.elbo_hist["epoch"], 
         q3.elbo_hist["elbo_epoch"], 
-        alpha = 0.8, 
+        alpha = 0.6, 
         linewidth=1,
         color=sns.color_palette("colorblind")[2],
         label="run 3")
 ax.legend(loc="lower right")
-plt.title("Convergence of ELBO, diff. init")
+plt.title("Different init.")
 plt.xlabel("Epoch")
 plt.ylabel("ELBO")
+a = plt.axes((.525, .525, .35, .25))
+plt.plot(q1.elbo_hist["epoch"], 
+        q1.elbo_hist["elbo_epoch"], 
+        alpha = 0.6,
+        linewidth=1,
+        color=sns.color_palette("colorblind")[0],
+        label="run 1")
+plt.plot(q2.elbo_hist["epoch"], 
+        q2.elbo_hist["elbo_epoch"], 
+        alpha = 0.6, 
+        linewidth=1, 
+        color=sns.color_palette("colorblind")[1],
+        label="run 2")
+plt.plot(q3.elbo_hist["epoch"], 
+        q3.elbo_hist["elbo_epoch"], 
+        alpha = 0.6, 
+        linewidth=1,
+        color=sns.color_palette("colorblind")[2],
+        label="run 3")
+plt.ylim(-310, -305)
 
 current_directory = os.getcwd()
 path1 = "thesis/assets/plots"
@@ -283,28 +305,31 @@ start_time = time.time()
 
 q4 = q1
 
+# Split the key 
+key, *subkeys = jax.random.split(key, 3)
+
 q5 = bbvi.Bbvi(graph=graph1, 
                jitter_init=False, 
                verbose=False)
-q5.run_bbvi(step_size=0.01,
-           threshold=1e-2,
-           key_int=keys[3],
-           batch_size=128,
-           num_var_samples=64,
-           chunk_size=50,
-           epochs=100)
+q5.run_bbvi(key=subkeys[0],
+            learning_rate=0.01,
+            threshold=1e-2,
+            batch_size=128,
+            num_var_samples=64,
+            chunk_size=50,
+            epochs=100)
 
 q6 = bbvi.Bbvi(graph=graph1, 
                jitter_init=False, 
                verbose=False)
-q6.run_bbvi(step_size=0.01,
-           threshold=1e-2,
-           key_int=keys[4],
-           batch_size=128,
-           num_var_samples=64,
-           chunk_size=50,
-           epochs=100)
-
+q6.run_bbvi(key=subkeys[1],
+            learning_rate=0.01,
+            threshold=1e-2,
+            batch_size=128,
+            num_var_samples=64,
+            chunk_size=50,
+            epochs=100)
+ 
 end_time = time.time()
 
 time_elapsed = end_time - start_time 
@@ -333,7 +358,7 @@ ax.plot(q6.elbo_hist["epoch"],
         color=sns.color_palette("colorblind")[2],
         label="run 2")
 ax.legend(loc="lower right")
-plt.title("Convergence of ELBO, diff. seed")
+plt.title("Different seeds")
 plt.xlabel("Epoch")
 plt.ylabel("ELBO")
 
@@ -354,15 +379,17 @@ fig.savefig(full_filepath2)
 Change the variational samples size 1, 32, 64, with batch VI.
 """
 
+# Use subkey from Figure 2
+
 # Record time 
 start_time = time.time()
 
 q7 = bbvi.Bbvi(graph=graph1, 
                jitter_init=False, 
                verbose=False)
-q7.run_bbvi(step_size=0.01,
+q7.run_bbvi(key=subkey,
+            learning_rate=0.01,
             threshold=1e-2,
-            key_int=keys[5],
             batch_size=round(n*0.8),
             num_var_samples=1,
             chunk_size=50,
@@ -371,24 +398,24 @@ q7.run_bbvi(step_size=0.01,
 q8 = bbvi.Bbvi(graph=graph1, 
                jitter_init=False, 
                verbose=False)
-q8.run_bbvi(step_size=0.01,
-           threshold=1e-2,
-           key_int=keys[5],
-           batch_size=round(n*0.8),
-           num_var_samples=32,
-           chunk_size=50,
-           epochs=500)
+q8.run_bbvi(key=subkey,
+            learning_rate=0.01,
+            threshold=1e-2,
+            batch_size=round(n*0.8),
+            num_var_samples=32,
+            chunk_size=50,
+            epochs=500)
 
 q9 = bbvi.Bbvi(graph=graph1, 
                jitter_init=False, 
                verbose=False)
-q9.run_bbvi(step_size=0.01,
-           threshold=1e-2,
-           key_int=keys[5],
-           batch_size=round(n*0.8),
-           num_var_samples=64,
-           chunk_size=50,
-           epochs=500)
+q9.run_bbvi(key=subkey,
+            learning_rate=0.01,
+            threshold=1e-2,
+            batch_size=round(n*0.8),
+            num_var_samples=64,
+            chunk_size=50,
+            epochs=500)
 
 end_time = time.time()
 
@@ -419,8 +446,8 @@ ax.plot(q9.elbo_hist["epoch"],
         label="samples=64")
 
 ax.legend(loc="lower right")
-plt.ylim(-2200)
-plt.title("Convergence of ELBO, diff. var. sample size")
+plt.ylim(-500)
+plt.title("Different var. sample size")
 plt.xlabel("Epoch")
 plt.ylabel("ELBO")
 
@@ -446,9 +473,9 @@ start_time = time.time()
 q10 = bbvi.Bbvi(graph=graph1, 
                 jitter_init=False, 
                 verbose=False)
-q10.run_bbvi(step_size=0.01,
+q10.run_bbvi(key=subkey,
+             learning_rate=0.01,
              threshold=1e-2,
-             key_int=keys[6],
              batch_size=36,
              num_var_samples=64,
              chunk_size=50,
@@ -457,9 +484,9 @@ q10.run_bbvi(step_size=0.01,
 q11 = bbvi.Bbvi(graph=graph1, 
                 jitter_init=False, 
                 verbose=False)
-q11.run_bbvi(step_size=0.01,
+q11.run_bbvi(key=subkey,
+             learning_rate=0.01,
              threshold=1e-2,
-             key_int=keys[6],
              batch_size=128,
              num_var_samples=64,
              chunk_size=50,
@@ -468,9 +495,9 @@ q11.run_bbvi(step_size=0.01,
 q12 = bbvi.Bbvi(graph=graph1, 
                 jitter_init=False, 
                 verbose=False)
-q12.run_bbvi(step_size=0.01,
+q12.run_bbvi(key=subkey,
+             learning_rate=0.01,
              threshold=1e-2,
-             key_int=keys[6],
              batch_size=512,
              num_var_samples=64,
              chunk_size=50,
@@ -504,7 +531,8 @@ ax.plot(q12.elbo_hist["iteration"][:500],
         color=sns.color_palette("colorblind")[2],
         label="batch size=512")
 ax.legend(loc="lower right")
-plt.title("Convergence of ELBO, diff. batch size")
+plt.ylim(-500)
+plt.title("Different batch size")
 plt.xlabel("Iteration")
 plt.ylabel("ELBO")
 

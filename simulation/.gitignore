@@ -6,3 +6,6 @@ plots
 
 # Ignore the tables directory 
 tables 
+
+# Ignore the sim test 
+main_sim_test.py

@@ -32,16 +32,19 @@ import tigerpy.model as tiger
 import tigerpy.bbvi as bbvi
 
 # Function to execute the simulation study 
-def sim_fun(n_sim: int) -> Dict:
+def sim_fun(n_sim: int, key: jax.random.PRNGKey) -> Dict:
+    # Create the grid of parameters of the simulation study
     var_grid = create_var_grid(n_sim)
-    split = jnp.split(jnp.arange(n_sim*2*len(var_grid)), len(var_grid))
-    key_ints = [jnp.split(subsplit, n_sim) for subsplit in split]
+    # Create an array of integers for the seeds in JAX
+    subkeys_grid = [jax.random.fold_in(key, i) for i in range(len(var_grid))]
     sim_results = []
 
     for j, config in enumerate(var_grid):
-        parallel_result = Parallel(n_jobs=-2, prefer="threads")(delayed(do_one)(config["response_dist"],
-                                                                                config["n_obs"],
-                                                                                key_ints[j][i]) for i in range(n_sim))
+        subkeys_sim = [jax.random.fold_in(subkeys_grid[j], i) for i in range(n_sim)]
+        parallel_result = Parallel(n_jobs=-2)(delayed(do_one)(config["response_dist"],
+                                                              config["n_obs"],
+                                                              subkeys_sim[i]) for i in range(n_sim))
+
         store_result, store_coef = zip(*parallel_result)
         results = process_results(store_result, store_coef)
         sim_results.append(results)
@@ -64,17 +67,21 @@ def create_var_grid(n_sim: int) -> Dict:
     return var_grid
 
 # One body call of the simulation
-def do_one(response_dist, n_obs, key_ints) -> Tuple[dict, dict]:
+def do_one(response_dist: str, n_obs: int, key: jax.random.PRNGKey) -> Tuple[dict, dict]:
+    
+    key, *subkeys = jax.random.split(key, 3)
+
     if response_dist == "normal":
-        data_dict = sim_data.normal_quadratic_const(n_obs, key_ints[0])
+        data_dict = sim_data.normal_quadratic_const(n_obs, subkeys[0])
+        sim_data.plot_sim_data
     elif response_dist == "bernoulli":
-        data_dict = sim_data.bernoulli_linear(n_obs, key_ints[0])
+        data_dict = sim_data.bernoulli_linear(n_obs, subkeys[0])
     
     model_obj = model_set_up(data_dict["data"], response_dist)
-    q = do_inference(model_obj, n_obs, key_ints[1])
+    q = do_inference(model_obj, n_obs, subkeys[1])
 
     result = return_target(q, response_dist)
-
+    
     return result, data_dict["coef"]
 
 # Post process the results to obtain Arrays with parameter estimates 
@@ -167,22 +174,28 @@ def model_set_up(data: Dict, response_dist: Any) -> tiger.ModelGraph:
     return graph
 
 # Run the inference algorithm 
-def do_inference(graph, n_obs, key_int):
-    q = bbvi.Bbvi(graph=graph)
+def do_inference(graph, n_obs, key):
+    q = bbvi.Bbvi(graph=graph,
+                  jitter_init=True,
+                  verbose=False)
 
     if n_obs <= 1000:
-        q.run_bbvi(step_size=0.01,
+        q.run_bbvi(key=key,
+                   learning_rate=0.01,
+                   grad_clip=1,
                    threshold=1e-2,
-                   key_int=key_int,
                    batch_size=128,
+                   train_share=0.8,
                    num_var_samples=64,
                    chunk_size=50,
                    epochs=250)
     elif n_obs > 1000:
-        q.run_bbvi(step_size=0.001,
+        q.run_bbvi(key=key,
+                   learning_rate=0.001,
+                   grad_clip=1,
                    threshold=1e-2,
-                   key_int=key_int,
                    batch_size=128,
+                   train_share=0.8,
                    num_var_samples=64,
                    chunk_size=50,
                    epochs=250)    
@@ -192,7 +205,7 @@ def do_inference(graph, n_obs, key_int):
 def return_target(q, response_dist):
     if response_dist == "normal":
         target = {"loc": q.return_loc_params["beta"]["loc"],
-                  "scale": jnp.exp(q.trans_var_params["sigma"]["loc"] + q.trans_var_params["sigma"]["cov"]/2)
+                  "scale": q.return_loc_params["sigma"]["loc"]
                  }
     elif response_dist == "bernoulli":
         target = {"logits": q.return_loc_params["beta"]["loc"]}

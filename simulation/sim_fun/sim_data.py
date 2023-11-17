@@ -13,25 +13,21 @@ import seaborn as sns
 
 from typing import (
     Union, 
-    Any,
     Callable
 )
-
-Array = Any
 
 """
 Simulate data.
 """
 
-def sim_data_normal(range: Union[list, Array],
-             n_obs: int,
-             fun_loc: Callable,
-             fun_scale: Union[Callable, None],
-             coef_loc: Array,
-             coef_scale: Array,
-             key_int: int) -> pd.DataFrame:
+def sim_data_normal(range: Union[list, jax.Array],
+                    n_obs: int,
+                    fun_loc: Callable,
+                    fun_scale: Union[Callable, None],
+                    coef_loc: jax.Array,
+                    coef_scale: jax.Array,
+                    key: jax.Array) -> pd.DataFrame:
     
-    key = jax.random.PRNGKey(key_int)
     key, *subkeys = jax.random.split(key, 3)
     x = jax.random.uniform(subkeys[0], shape=(n_obs,), minval=range[0], maxval=range[1])
     
@@ -40,7 +36,9 @@ def sim_data_normal(range: Union[list, Array],
     if callable(fun_scale):
         log_scale = fun_scale(x, coef_scale)
         scale = jnp.exp(log_scale)
+        # The shape is () sine scale already has corresponding shape 
         e = tfjd.Normal(loc=jnp.array(0.0), scale = scale).sample(sample_shape=(), seed=subkeys[1])
+        print(e.shape)
     else:
         scale = coef_scale
         e = tfjd.Normal(loc=jnp.array(0.0), scale = scale).sample(sample_shape=x.shape, seed=subkeys[1])
@@ -56,19 +54,19 @@ def sim_data_normal(range: Union[list, Array],
 
     return df 
 
-def sim_data_bernoulli(range: Union[list, Array],
+def sim_data_bernoulli(range: Union[list, jax.Array],
                        n_obs: int,
                        fun_logits: Callable,
-                       coef_logits: Array,
-                       key_int: int) -> pd.DataFrame:
+                       coef_logits: jax.Array,
+                       key: jax.Array) -> pd.DataFrame:
     
-    key = jax.random.PRNGKey(key_int)
     key, *subkeys = jax.random.split(key, 3)
     x = jax.random.uniform(subkeys[0], shape=(n_obs,), minval=range[0], maxval=range[1])
     
     logits = fun_logits(x, coef_logits)
     probs = jnp.exp(logits)/(1 + jnp.exp(logits))
 
+    # The array logits already has the corresponding shape 
     y = tfjd.Bernoulli(logits=logits).sample(sample_shape=(), seed=subkeys[1])
 
     df = pd.DataFrame({
@@ -102,46 +100,29 @@ Functions to export.
 
 # All functions have the convention dist(response)_relationship(param1)_...
 
-def normal_quadratic_const(n_obs, key_int):
+def normal_quadratic_const(n_obs, key):
     df = sim_data_normal([-3,3], 
                          n_obs, 
                          quadratic_fun,
                          None,
                          coef_loc=jnp.array([3.0, 0.2, -0.5]),
                          coef_scale=jnp.array(1.0),
-                         key_int=key_int)
+                         key=key)
     
     data_dict = {"data": df,
                  "coef": {"loc": jnp.array([3.0, 0.2, -0.5]),
                           "scale": jnp.array(1.0)},
-                 "rel": "complex, constant"
-                 }
-
-    return data_dict
-
-def normal_complex_const(n_obs, key_int):
-    df = sim_data_normal([-10,10], 
-                         n_obs, 
-                         complex_fun,
-                         None,
-                         coef_loc=jnp.array([3.0, 1.75, 1.5]),
-                         coef_scale=jnp.array(1.5),
-                         key_int=key_int)
-    
-    data_dict = {"data": df,
-                 "coef": {"loc": jnp.array([3.0, 1.75, 1.5]),
-                          "scale": jnp.array(1.5)},
                  "rel": "quadratic, constant"
                  }
 
-    return data_dict    
+    return data_dict 
 
-def bernoulli_linear(n_obs, key_int):
+def bernoulli_linear(n_obs, key):
     df = sim_data_bernoulli([-3,3], 
                             n_obs, 
                             linear_fun,
                             coef_logits=jnp.array([1.0, 2.0]),
-                            key_int=key_int)
+                            key=key)
     
     data_dict = {"data": df,
                  "coef": {"logits": jnp.array([1.0, 2.0])},
@@ -150,11 +131,28 @@ def bernoulli_linear(n_obs, key_int):
 
     return data_dict
 
+def normal_complex_const(n_obs, key):
+    df = sim_data_normal([-10,10], 
+                         n_obs, 
+                         complex_fun,
+                         None,
+                         coef_loc=jnp.array([3.0, 1.75, 1.5]),
+                         coef_scale=jnp.array(1.5),
+                         key=key)
+    
+    data_dict = {"data": df,
+                 "coef": {"loc": jnp.array([3.0, 1.75, 1.5]),
+                          "scale": jnp.array(1.5)},
+                 "rel": "complex, constant"
+                 }
+
+    return data_dict   
+
 """
 Function to visualize the relationship.
 """
 
-def plot_sim_data(df: pd.DataFrame, dist: str):
+def plot_sim_data(df: pd.DataFrame, dist: str, savepath: None | str=None):
     
     if dist == "normal":
         df["upper"] = df["loc"] + 1.96*df["scale"]
@@ -165,10 +163,14 @@ def plot_sim_data(df: pd.DataFrame, dist: str):
         sns.set_theme(style="whitegrid")
         fig = plt.figure(figsize=(8,6))
         plt.scatter(x=sort_df["x"], y=sort_df["y"], s=5)
-        plt.plot(sort_df["x"], sort_df["loc"])
+        plt.plot(sort_df["x"], sort_df["loc"], color=sns.color_palette()[1])
         plt.plot(sort_df["x"], sort_df["upper"], linewidth=0.7, color=sns.color_palette()[1], linestyle='dashed')
         plt.plot(sort_df["x"], sort_df["lower"], linewidth=0.7, color=sns.color_palette()[1], linestyle='dashed')
-        plt.show()
+        
+        if savepath is not None:
+            plt.savefig(savepath)
+        else:
+            plt.show()
 
     elif dist == "bernoulli":
         sort_df = df.sort_values("x")
@@ -176,4 +178,8 @@ def plot_sim_data(df: pd.DataFrame, dist: str):
         sns.set_theme(style="whitegrid")
         fig = plt.figure(figsize=(8,6))
         plt.scatter(x=sort_df["x"], y=sort_df["probs"], s=5)
-        plt.show()
+        
+        if savepath is not None:
+            plt.savefig(savepath)
+        else:
+            plt.show()
