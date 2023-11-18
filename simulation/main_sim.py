@@ -139,7 +139,7 @@ if __name__ == "__main__":
         pickle.dump(results2, file)
 
     proc2.plot_post_dens(results2)
-    
+
     # Track end time of simulation 2
     end_time = time.time()
     time_elapsed = end_time - start_time 

@@ -125,7 +125,7 @@ def plot_post_dens(results: dict):
             blue_patch = mpatches.Patch(color=sns.color_palette("Blues")[4], label='MCMC')
             plt.legend(handles=[red_patch, blue_patch])
             plt.xlabel(r"$\sigma$")
-            plt.title("Standard deviation")
+            plt.title("Scale")
             plt.savefig(full_filepath)
             sns.reset_orig()
             fig_count += 1

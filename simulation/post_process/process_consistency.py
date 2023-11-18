@@ -96,7 +96,7 @@ def plot_univariate(data_plot):
                     if key in ["loc", "logits"]:
                         label = r"\hat{\beta}"
                     sns.kdeplot(value, x=param, hue="n_obs", ax=axs[i], palette="colorblind")
-                    axs[i].set_xlabel(rf"${label}_{str(i)}$")
+                    axs[i].set_xlabel(rf"${label}_{{str(i)}}$")
                     axs[i].set_ylabel("")
                 fig.supylabel("Density")
             plt.tight_layout()

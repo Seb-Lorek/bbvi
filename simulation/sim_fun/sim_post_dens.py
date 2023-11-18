@@ -53,7 +53,19 @@ from tigerpy.distributions import MultivariateNormalDegenerate as TigerpyMultiva
 
 # Set the required logging level for liesel (use ERROR to still display error messages, but no warnings)
 logger = logging.getLogger("liesel")
-logger.setLevel(logging.ERROR)
+logger.setLevel(logging.ERROR)  # Set the level to ERROR for liesel logger
+
+# Create a FileHandler to output logs to the file
+log_file = 'simulation/results/sim2_liesel.log'
+file_handler = logging.FileHandler(log_file, encoding='utf-8')
+file_handler.setLevel(logging.INFO)  # Set the level to INFO for the log file
+
+# Create a formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Add the FileHandler to the liesel logger
+logger.addHandler(file_handler)
 
 # Function to execute the simulation study 
 def sim_fun(n_obs: int, key: jax.Array) -> Tuple[dict, dict]:
@@ -87,6 +99,10 @@ def sim_fun(n_obs: int, key: jax.Array) -> Tuple[dict, dict]:
         plot_results.append(post_results)
         post_samples = process_results(post_results, config["library"])
         sim_results[config["library"]] = post_samples
+
+    # Close the logging FileHandler
+    file_handler.close()
+    logger.removeHandler(file_handler)
 
     filename = "plot_post_mean.pdf"
     full_filepath = os.path.join(folder_path, 
