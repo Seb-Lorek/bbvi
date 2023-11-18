@@ -366,7 +366,7 @@ Exemplary ELBO traces, illustrating the impact of varying optimization parameter
 
 ![ELBO traces for 3 different SGD runs, using different seeds but the same initialization. Otherwise same configuration as in @fig-elbo-trace1.](assets/plots/plot3.pdf){fig-scap="ELBO traces for different seeds." #fig-elbo-trace2}
 
-![ELBO traces for 3 different SGD runs, using different variational sample sizes. Using batch VI with a learning rate of 1e-2 and the same seed as in @fig-elbo-trace1.](assets/plots/plot4.pdf){fig-sub-scap="ELBO traces for different variational sample sizes." #fig-elbo-trace3}
+![ELBO traces for 3 different SGD runs, using different variational sample sizes. Using batch VI with a learning rate of 1e-2 and the same seed as in @fig-elbo-trace1.](assets/plots/plot4.pdf){fig-scap="ELBO traces for different variational sample sizes." #fig-elbo-trace3}
 
 ![ELBO traces for 3 different SGD runs, using different batch sizes. Using a variational sample size of 64 with a learning rate of 1e-2 and the same seed as in @fig-elbo-trace1.](assets/plots/plot5.pdf){fig-scap="ELBO traces for different batch sizes." #fig-elbo-trace4}
 

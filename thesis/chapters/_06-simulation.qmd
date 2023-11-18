@@ -37,9 +37,9 @@ Our Estimands in this study are the fixed known coefficients in Table \ref{tbl-1
 
 Kernel density plots of the posterior means for the parameters of $M_{1}$ are provided in @fig-kdeplot-loc and @fig-kdeplot-scale. We notice a clear trend of convergence as the sample size increases, tending towards a point mass at the true values of the parameters. Additionally, there appears to be no significant presence of outliers, indicating satisfactory convergence without major issues. In the kernel density plot of the scale shown in @fig-kdeplot-scale we can notice a slightly larger spread for low observation sample sizes. 
 
-![Kernel density plots of the posterior means for location parameters of $M_{1}$, true parameters given by $\betavec = [3.0, 0.2, -0.5]^{\mathrm{T}}$.](assets/plots/plot8.pdf){width=80% fig-scap="Kernel density plots for location parameters of $M_{1}$." #fig-kdeplot-loc}
+![Kernel density for the posterior means of the location parameters of $M_{1}$, true parameters given by $\betavec = [3.0, 0.2, -0.5]^{\mathrm{T}}$.](assets/plots/plot8.pdf){width=80% fig-scap="Kernel density plots for location parameters of $M_{1}$." #fig-kdeplot-loc}
 
-![Kernel density plots of the posterior means for scale parameter of $M_{1}$, true parameter given by $\sigma=1.0$](assets/plots/plot9.pdf){width=80% fig-scap="Kernel density plots for scale parameter of $M_{1}$." #fig-kdeplot-scale}
+![Kernel density for the posterior means of the scale parameter of $M_{1}$, true parameter given by $\sigma=1.0$](assets/plots/plot9.pdf){width=80% fig-scap="Kernel density plots for scale parameter of $M_{1}$." #fig-kdeplot-scale}
 
 Ideally, we would anticipate observing zero bias across various $n_{\text{obs}}$ sizes, accompanied by a reduction in EmpSE for growing $n_{\text{obs}}$. This is exactly what we obseve in Table \ref{tbl-2} for the performance measures.
 
@@ -74,7 +74,7 @@ Ideally, we would anticipate observing zero bias across various $n_{\text{obs}}$
 
 For the parameters of $M_{2}$, we also observe a convergence toward the true fixed parameters. However, with smaller sample sizes, a slight negative shift is visible, a common occurrence in logistic regression [REF]. This shift however gradually diminishes as the sample size increases. Furthermore seems the spread somewhat larger in @fig-kdeplot-logit compared to @fig-kdeplot-loc.
 
-![Kernel density plots of the posterior means for logit parameters of $M_{2}$, true parameters given by $\betavec = [1.0, 2.0]^{\mathrm{T}}$.](assets/plots/plot10.pdf){width=80% fig-scap="Kernel density plots for logit parameters of $M_{2}$." #fig-kdeplot-logit}
+![Kernel density for the posterior means of the logit parameters of $M_{2}$, true parameters given by $\betavec = [1.0, 2.0]^{\mathrm{T}}$.](assets/plots/plot10.pdf){width=80% fig-scap="Kernel density plots for logit parameters of $M_{2}$." #fig-kdeplot-logit}
 
 The findings above are of course also visible for the bias and EmpSE of $\beta_{0}$ and $\beta_{1}$ in Table \ref{tbl-3}. Never the less the bias tend towards zero for growing sample sizes. The EmpSE once more demonstrates a convergence toward zero, however being larger compared to what we observed in \ref{tbl-2}.
 
@@ -109,40 +109,42 @@ The results are promising as there is no indication of an implementation error c
 
 In our upcoming study, we aim to visually evaluate the outcomes derived from fitting a smooth curve, with Bayesian P-splines, using BBVI and then compare these results with those obtained through MCMC. We are particularly interested in comparing the fit achieved by utilizing the posterior means of the model parameters and the corresponding posterior distributions. Are the results closely comparable, or does BBVI yield notably different outcomes compared to MCMC?
 
-The data-generating mechanism was chosen to be,
+The data-generating mechanism was chosen to be
 
 $$
 \begin{split}
     y_{i} | x_{i} &\sim \mathcal{N}(f(x_{i}), 1.5^{2}) \\
     f(x_{i}) &= 3.0 + 1.75 \sin(1.5x_{i}) \\
-    x_{i} &\sim \mathcal{U}(-10,10), \ i=1, \dots, 1000
+    x_{i} &\sim \mathcal{U}(-10,10), \ i=1, \dots, 1000,
 \end{split}
 $$
 
-which we now denote as data generating process (DGP). For the obervation sample size we use $n_{\text{obs}}=1000$. We slightly heightened the frequency of the $\sin$ function to augment the complexity of estimating the function. The target here is to visually asses the fit of the function and compare the posterior distributions of MCMC and BBVI. For estimation of the posterior distribution with BBVI we again use `tigerpy` and for MCMC we use `liesel` [@Riebl2022].
+which we denote in the following as data generating process (DGP). For the obervation sample size we use $n_{\text{obs}}=1000$. We slightly heightened the frequency of the $\sin$ function to augment the complexity of estimating the function. The target here is to visually asses the fit of the function and compare the posterior distributions of MCMC and BBVI. To estimate the posterior distribution with BBVI we use our implementation (`tigerpy`) and for MCMC we use `liesel` [@Riebl2022]. For both models we specify a linear predictor for the location with one fixed intercept and a smooth effect through the Bayesian P-spline. We choose to use 20 knots, a degree of 3 and a random walk order of 2. In BBVI we again don't use a model specific initialization and set $\muvec_{j}=\zerovec$, $\diag(\Lbold_{j}) = 2*\onevec$ for the scale parameter ($\sigma$) and $\diag(\Lbold_{j}) = \onevec$ else. This is done to fairly compare BBVI with MCMC which also does not provide a model specific intitalization. Furthermore we fix the epoch size to 500, the learning rate to 1e-2, the batch-size to 256, the training share to 0.8 and use 64 samples to evaluate the Monte Carlo integral. For the MCMC algorithm we use iterated weighted least squares (IWLS) Kernels for the parameters in the linear predictor, a No U-Turn sampler (NUTS) Kernel for $\sigma$ and finally a Gibbs sampler for the inverse smoothing parameter $\tau^{2}$. We use 1000 samples for the burn-in and after that obtain again 1000 samples from the chain. To further evaluate the stability of the results, a common practice in MCMC involves running multiple independent chains, four in our case. Similarly, with the BBVI algorithm, we conducted multiple runs, using different seeds, to compare the resulting posterior distributions. As MCMC furnishes samples from the posterior distribution, we utilized our optimized variational distribution to derive samples. This approach allows for a fair comparison of the resulting kernel density estimates between both methods.
+
+The DGP is visualized in @fig-sim2-dgp and the resulting fits for both BBVI and MCMC using the posterior means are shown in @fig-sim2-post-means. Both methods result in surprisingly similar fits and both are able to capture the smooth function well. Even though BBVI just approximates the posterior distribution it intersting to observe how well it inferes the posterior means, which already has been shown in [Chapter @sec-cons-study]. Overall, BBVI generally presents a slightly inferior fit. Nevertheless, it does demonstrate a superior fit for specific oscillations when compared to MCMC. Specifically, at the left boundary, BBVI produces a less accurate fit than MCMC.
 
 ::: {layout="[[50,-5,50]]"}
 
-![Plot of the DGP, mean visualized by the solid line and 95% confidence band by the dashed line.](assets/plots/plot11.pdf){#fig-sim2-dgp}
+![The DGP, mean visualized by the solid line and 95% confidence band by the dashed line.](assets/plots/plot11.pdf){fig-scap="Plot of the DGP." #fig-sim2-dgp}
 
-![Plot of the DGP and the estimated smooth functions of BBVI and MCMC using the posterior mean.](assets/plots/plot12.pdf){#fig-sim2-post-means}
+![The DGP and the estimated smooth functions of BBVI and MCMC using the posterior mean.](assets/plots/plot12.pdf){fig-scap="Plot of the estimated smooth functions." #fig-sim2-post-means}
 
 :::
 
-![](assets/plots/plot13.pdf){width=80% #fig-sim2-fixed}
+Kernel density plots representing the posterior samples of the parameter are available from @fig-sim2-fixed to @fig-sim2-sig. Once more, we notice similar posterior distributions for both inference methods. However, the resulting posterior distributions from BBVI for different runs appear to exhibit a wider degree of variability. Noticeable differgencies merges for smooth coefficients on the left boundary (see @fig-sim2-smooth, upper left), corresponding to the finding that the fits for BBVI and MCMC diverge. MCMC appears to estimate the posterior with considerably higher uncertainty compared to BBVI. 
 
-![](assets/plots/plot14.pdf){width=80% #fig-sim2-smooth}
+![Kernel density for the posterior samples of the fixed intercept, using 4 runs from BBVI (red) and 4 chains from MCMC (blue).](assets/plots/plot13.pdf){width=60% fig-scap="Kernel density for the posterior samples of the fixed intercept." #fig-sim2-fixed}
 
-![](assets/plots/plot15.pdf){width=80% #fig-sim2-tau2}
+![Kernel density for the posterior samples of selected spline coefficients, using 4 runs from BBVI (red) and 4 chains from MCMC (blue).](assets/plots/plot14.pdf){width=60% fig-scap="Kernel density for the posterior samples of selected spline coefficients." #fig-sim2-smooth}
 
-![](assets/plots/plot16.pdf){width=80% #fig-sim2-sig}
+Moreover for the inverse smoothing parameter $\tau^{2}$ we also obtain considerable difference. But this can be easily related to the fact that we use a Gibbs sampler for the parameter using an inverse gamma distribution for the full conditional of $\tau^{2}$ in MCMC, while our variational distribution in BBVI uses a log-normal distribution. 
+
+![Kernel density for the posterior samples of the inverse smoothing parameter, using 4 runs from BBVI (red) and 4 chains from MCMC (blue).](assets/plots/plot15.pdf){width=60% fig-scap="Kernel density for the posterior samples of the inverse smoothing parameter." #fig-sim2-tau2}
+
+![Kernel density for the posterior samples of the standard deviation, using 4 runs from BBVI (red) and 4 chains from MCMC (blue).](assets/plots/plot16.pdf){width=60% fig-scap="Kernel density for the posterior samples of the standard deviation." #fig-sim2-sig}
 
 ## Posterior density study II
 
-Now we will compare BBVI with MCMC for a location-scale regresion model in terms of the approximation measured by the KL-divergence.
+In our last study we continue to compare the posterior distribution of BBVI and MCMC but try to quantify the closeness to the true posterior by using the KL-divergence. 
 
-In this study we also have a target. 
-
-## MSE study
-
-Finally we will compare MSE for different complex function for BBVI and MCMC in reference to @Lang2004.
+We will consider a location-scale regression model with structured additive linear predictors.
