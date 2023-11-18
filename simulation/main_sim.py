@@ -119,6 +119,7 @@ if __name__ == "__main__":
 
     # Start simulation study 2
     print("Start simulation 2")
+    
     # Track start time simulation 2
     start_time = time.time() 
 

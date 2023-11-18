@@ -8,6 +8,7 @@ import sys
 import os 
 import time 
 import itertools
+import logging 
 
 from typing import (
     Union,
@@ -49,6 +50,10 @@ sys.path.append(os.getcwd())
 import tigerpy.model as tiger
 import tigerpy.bbvi as bbvi
 from tigerpy.distributions import MultivariateNormalDegenerate as TigerpyMultivariateNormalDegenerate
+
+# Set the required logging level for liesel (use ERROR to still display error messages, but no warnings)
+logger = logging.getLogger("liesel")
+logger.setLevel(logging.ERROR)
 
 # Function to execute the simulation study 
 def sim_fun(n_obs: int, key: jax.Array) -> Tuple[dict, dict]:
