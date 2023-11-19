@@ -70,22 +70,21 @@ December, 2023 \\
 The thesis explores variational inference as a viable alternative tool for 
 tackling Bayesian inference problems, allowing for the approximation of 
 posterior distributions through optimization. Variational inference is applied 
-to Bayesian (semiparameteric) 
+to Bayesian semiparameteric
 disitrubtional regression models and several simulation studies traget 
-different statistical aspects of the implemented inference algorithm. The "black-box" 
-variational inference algorithm has been implemented in \verb|python| in 
-combination with a model building library that uses the idea of probabilistic 
-graphical models to construct Bayesian semiparametric distributional regression 
-models and retrieve node information during the process of inference. A simulation 
-study shows that the implemented variational inference algorithm results in 
-consistent parameter estimates when considering the posterior mean. 
-Moreover analyzes the thesis in a simulation study the posterior distributions 
-of Markov chain Monte Carlo and "black-box" variational inference and shows 
-that variational inference obtains rather similar posterior distributions. 
+different statistical aspects of the implemented inference algorithm. 
+The "black-box" variational inference algorithm has been implemented in \verb|python| 
+within a software package consisting of a model building and inference library 
+that leverages the framework of probabilistic graphical models.
+A simulation study shows that the implemented variational inference algorithm results in 
+consistent parameter estimates when considering the posterior means of the model parameters. 
+Furthermore, the thesis conducts a simulation study to analyze the posterior distributions 
+of Markov chain Monte Carlo and "black-box" variational inference, 
+revealing that variational inference yields rather similar posterior distributions.
 Finally variational inference indicates, in a further study, the ability to 
-approximate the posterior well even after a low number of iterations. 
+approximate the posterior well even after a low number of optimization iterations. 
 This is in contrast to Markov Chain Monte Carlo methods which usually require a 
-large number of iterations to obtain a good approximation of the posterior.
+large number of sampling iterations to obtain a good approximation of the posterior.
 
 \clearpage
 
@@ -107,19 +106,20 @@ large number of iterations to obtain a good approximation of the posterior.
 
 \begin{tabular}{@{} l @{\hskip 1in} l}
   VI & Variational inference \\
-  SVI & Stochastic variational inference \\
   MCMC & Markov chain Monte Carlo \\
   KL & Kullback-Leibler \\
+  BBVI & "Black-box" variational inference \\
   GAMLSS & Generalized additive models for location, scale and shape \\
+  DAG & Directed acyclic graph \\ 
+  SVI & Stochastic variational inference \\
   CAVI & Coordinate ascent variational inference \\
   SGD & Stochastic gradient descent \\
-  BBVI & "Black-box" variational inference \\
   API & Application programming interface \\
   JIT & Just-in-time compilation \\
   CPU & Central processing unit \\
   GPU & Graphical processing unit \\
   TPU & Tensor processing unit \\
-  EmpSE & Emprical standard error \\
+  EmpSE & Empirical standard error \\
   SE & Standard error \\
   DGP & Data generating process \\
   IWLS & Iterated weighted least squares \\
