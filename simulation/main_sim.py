@@ -21,7 +21,7 @@ if __name__ == "__main__":
     # Create the trace plots 
     # Set the path to execute the script 
     print("Start trace plots")
-    script_path = 'simulation/sim_fun/sim_trace_elbo.py'
+    script_path = "simulation/sim_fun/sim_trace_elbo.py"
 
     # Specify the filename for exporting the plots
     current_directory = os.getcwd()
@@ -69,7 +69,7 @@ if __name__ == "__main__":
         print(f"Directory '{folder_path}' already exists.")
     
     # Set the number of simulation runs
-    n_sim = 50
+    n_sim = 200
 
     # Set the starting key for simulation 1 
     key = jax.random.PRNGKey(2989325200)
@@ -84,6 +84,13 @@ if __name__ == "__main__":
     # Export the object using pickle
     with open(full_filepath, "wb") as file:
         pickle.dump(results1, file)
+
+    filename = "sim1_grid.pickle"
+    full_filepath = os.path.join(folder_path, filename)
+
+    # Export the object using pickle
+    with open(full_filepath, "wb") as file:
+        pickle.dump(var_grid1, file)
 
     # Check for missing values 
     missing_data, exist_missing = proc1.check_missing_data(results1)
@@ -140,7 +147,31 @@ if __name__ == "__main__":
 
     proc2.plot_post_dens(results2)
 
+    sim2_proc = proc2.calc_wasserstein(results2)
+
+    # Create the full path to the file
+    filename = "sim2_proc.pickle"
+    full_filepath = os.path.join(folder_path, filename)
+
+    # Export the object using pickle
+    with open(full_filepath, "wb") as file:
+        pickle.dump(results2, file)
+
+    proc2.create_latex_table(sim2_proc)
+
     # Track end time of simulation 2
     end_time = time.time()
     time_elapsed = end_time - start_time 
     print(f"Time elapsed for simulation 2 n_obs={n_obs}:{time_elapsed/60:.2f} minutes")
+
+    # Start simulation study 3 
+    print("Start simulation study 3")
+
+    start_time = time.time()
+
+
+
+    # Track end time of simulation 1
+    end_time = time.time()
+    time_elapsed = end_time - start_time 
+    print(f"Time elapsed for simulation 1 n_obs={n_obs}:{time_elapsed/60:.2f} minutes")

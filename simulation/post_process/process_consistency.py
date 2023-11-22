@@ -87,7 +87,7 @@ def plot_univariate(data_plot):
                 if key == "scale":
                     label = r"\hat{\sigma}"
                 fig, ax = plt.subplots(figsize=(10,6))
-                sns.kdeplot(value, x=param, hue="n_obs", palette="colorblind")
+                sns.kdeplot(value, x=param, hue="n_obs", bw_adjust=1.5, palette="colorblind")
                 ax.set_xlabel(rf"${label}$")
             else: 
                 fig, axs = plt.subplots(nrows=1, ncols=ncols, figsize=(10, 6))
@@ -95,12 +95,13 @@ def plot_univariate(data_plot):
                     param = key + "_" + str(i)
                     if key in ["loc", "logits"]:
                         label = r"\hat{\beta}"
-                    sns.kdeplot(value, x=param, hue="n_obs", ax=axs[i], palette="colorblind")
-                    axs[i].set_xlabel(rf"${label}_{{str(i)}}$")
+                    sns.kdeplot(value, x=param, hue="n_obs", bw_adjust=1.5, ax=axs[i], palette="colorblind")
+                    axs[i].set_xlabel(rf"${label}_{{{str(i)}}}$")
                     axs[i].set_ylabel("")
                 fig.supylabel("Density")
             plt.tight_layout()
             plt.savefig(full_filepath)
+            sns.reset_orig()
             fig_count += 1
 
 def analyze_results(results, grid):
