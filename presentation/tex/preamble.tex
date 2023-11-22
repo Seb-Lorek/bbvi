@@ -1,0 +1,92 @@
+% For bullet list: use square or circle
+\setbeamertemplate{itemize items}[square]
+
+% Define your colors like this:
+\usepackage{xcolor}
+\definecolor{darkblue}{RGB}{0,101,141}
+\definecolor{mblue}{RGB}{0,147,199}
+\definecolor{lightblue}{RGB}{132,191,234}
+\definecolor{grey60}{RGB}{135,135,134}
+
+% Use your colors in the presentation like this:
+\setbeamercolor{titlelike}{fg=darkblue}
+\setbeamercolor{itemize item}{fg=darkblue}
+\setbeamercolor{itemize subitem}{fg=darkblue}
+\setbeamercolor{enumerate item}{fg=darkblue}
+
+% change colors of the reference entries
+\setbeamercolor{bibliography item}{fg=darkblue}
+\setbeamercolor{bibliography entry author}{fg=darkblue}
+\setbeamercolor{bibliography entry location}{fg=grey60}
+\setbeamercolor{bibliography entry note}{fg=grey60}
+
+% For nice boxse (e.g. for important statements).
+\usepackage{tcolorbox}
+
+% Slide numbers and logo manually
+\usepackage{tabularx}
+\setbeamertemplate{footline}{
+    \color{fg}
+    \begin{tabularx}{\textwidth}{XX}
+    \insertframenumber/\inserttotalframenumber\hfill\phantom{.} &
+	\hfill\includegraphics[width=3cm, height=1cm]{assets/logo_uni_goe.pdf}
+    \\
+    \end{tabularx}
+}
+
+% emojies 
+\usepackage{hwemoji}
+
+% tikZ
+\usepackage{tikz}
+\usetikzlibrary{bayesnet}
+
+% algorithm2e
+\usepackage{algorithm2e}
+
+% Use threepartstable 
+\usepackage[flushleft]{threeparttable}
+
+% --- Mathematics --- %
+
+% vectors
+\newcommand{\zerovec}{\mathbf{0}}
+\newcommand{\onevec}{\mathbf{1}}
+\newcommand{\yvec}{\mathbf{y}}
+\newcommand{\xvec}{\mathbf{x}}
+\newcommand{\gvec}{\mathbf{g}}
+\newcommand{\fvec}{\mathbf{f}}
+\newcommand{\zvec}{\mathbf{z}}
+\newcommand{\svec}{\mathbf{s}}
+
+
+% matrices
+\newcommand{\X}{\mathbf{X}}
+\newcommand{\I}{\mathbf{I}}
+\newcommand{\Lbold}{\mathbf{L}}
+\newcommand{\J}{\mathbf{J}}
+\newcommand{\Z}{\mathbf{Z}}
+\newcommand{\K}{\mathbf{K}}
+\newcommand{\D}{\mathbf{D}}
+\newcommand{\T}{\mathbf{T}}
+
+% Greek vectors/matrices
+\newcommand{\thetavec}{\boldsymbol{\theta}}
+\newcommand{\betavec}{\boldsymbol{\beta}}
+\newcommand{\phivec}{\boldsymbol{\phi}}
+\newcommand{\muvec}{\boldsymbol{\mu}}
+\newcommand{\epsilonvec}{\boldsymbol{\epsilon}}
+\newcommand{\varphivec}{\boldsymbol{\varphi}}
+\newcommand{\gammavec}{\boldsymbol{\gamma}}
+\newcommand{\etavec}{\boldsymbol{\eta}}
+
+\newcommand{\Sigmabold}{\boldsymbol{\Sigma}}
+\newcommand{\Thetabold}{\boldsymbol{\Theta}}
+
+% other stuff
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator{\vect}{vec}
+\DeclareMathOperator{\diag}{diag}
+
+\newcommand{\ind}{\overset{\text{ind.}}{\sim}}

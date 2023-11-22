@@ -1,0 +1,460 @@
+---
+title: A Stochastic Variational Inference Approach for Semiparametric Distributional Regression
+subtitle: Final Kolloquium MSc Applied Statistic
+author: Sebastian Lorek
+institute: |
+    | First supervisor: Prof. Dr. Thomas Kneib 
+    | Second supervisor: Gianmarco Callegher
+date: "2023-11-28"
+format:
+    beamer: 
+        pdf-engine: pdflatex
+        toc: true
+        toc-depth: 2
+        toccolor: black
+        citecolor: blue
+        linkcolor: darkblue
+        toc-title: "Table of Contents"
+        include-in-header: "tex/preamble.tex"
+        slide-level: 2
+        fontsize: 10pt
+        latex-min-runs: 2
+        cite-method: biblatex
+        biblatexoptions:
+        - backend=biber
+        - maxbibnames=999
+        - maxcitenames=2
+        - uniquename=false
+        - uniquelist=false
+        - dashed=false
+        - isbn=false
+        - doi=false
+        - eprint=false
+        biblio-style: authoryear-icomp
+bibliography: ["bib/references.bib", "bib/packages.bib"]
+---
+
+# Introduction 
+
+## Statistical Infrence 
+
+:::: {.columns}
+
+::: {.column width="50%"}
+Frequentist inference: 
+\begin{itemize}
+    \item ML estimation (Newton-Rhapson/Fisher-Scoring) 
+    \item Hyperparameter estimation 
+    \item REML for latent parameters (random-effects) 
+    \item SGD, Automatic differentiation in machine/deep learning
+\end{itemize}
+
+:::
+
+::: {.column width="50%"}
+Bayesian inference: 
+\begin{itemize}
+    \item Conjugate models, full conditional conjugate  models, non-conjugate models
+    \item Gibbs sampling 
+    \item Rejection/Importance sampling
+    \item MCMC (IWLS, HMC, NUTS)
+    \item MAP estimation in combination with the Laplace approximation
+\end{itemize}
+:::
+
+:::
+
+
+## Bayesian Inference 
+
+- Focal point of interest is the posterior distribution
+- General posterior specification for Bayesian regression 
+
+\begin{align}
+    p(\thetavec | \yvec, \mathcal{D}) &= \frac{p(\yvec, \thetavec | \mathcal{D})}{p(\yvec | \mathcal{D})} \\
+    &= \frac{p(\yvec| \thetavec, \mathcal{D})p(\thetavec)}{p(\yvec | \mathcal{D})} \\
+    &= \frac{p(\yvec| \thetavec, \mathcal{D})p(\thetavec)}{\int p(\yvec| \thetavec, \mathcal{D})p(\thetavec) \, d \thetavec} \\
+    &\propto p(\yvec| \thetavec, \mathcal{D})p(\thetavec) 
+\end{align}
+
+- Primary challenge is the calculation of the normalizing constant/evidence 
+- We need approximate methods that bypass the direct calculation of the normalizing constant 
+
+---
+
+- MCMC methods have been **so far** the work horse for Bayesian inference in classical statistics
+- Set up Markov chain (adhere to detailed balance and ergodicity) and sample ...
+- Enjoyes nice properties
+  - Assurance of convergence to the true posterior
+- But unfortunately does not scale well for modern applications
+  - High dimensional parameter spaces (tausands of parameters)
+  - Large dataset
+  - Many latent and hyper-parameters 
+- Trade some **accuracy** for **scalability**
+- Make use of SGD and automatic differentiation which works well for inference in machine/deep learning (frequentist inference)
+
+# Theory 
+
+## Variational Inference 
+
+- VI is a method from machine learning to **approximate** probability densities [@Jordan1999]
+- Approximate posterior with a variational distribution $q(\thetavec)$ from a predefined (parametric) variational family $\mathcal{Q}$
+  
+\begin{align*}
+    q(\thetavec) &\in \mathcal{Q}
+\end{align*}
+
+- Use optimization (SGD) to find a member that is as closely as possible to the true posterior
+- What means close in terms of distributions ?
+
+## Kullback-Leibler divergence 
+
+- Divergence measure [@Kullback1951] that quantifies the proximity between two probability distributions
+
+\begin{align*}
+    \text{D}_{\text{KL}} &= \int q(\thetavec ) \ln \left( \frac{q(\thetavec )}{p(\thetavec | \yvec, \mathcal{D})} \right) \, d \thetavec \\
+    &= \text{E}_{q(\thetavec)} \left[ \ln \left( \frac{q(\thetavec)}{p(\thetavec | \yvec, \mathcal{D})} \right) \right]
+\end{align*}
+
+- In short $\text{D}_{\text{KL}} \left( q || p \right)$
+- It holds that $\text{D}_{\text{KL}}\left( q || p \right) \geq 0$
+- Has some nice properties but also drawbacks (not a distance/metric)
+
+## Optimization objective
+
+- Use optimization to find a variational distribution that is as close as possible in terms of the divergence measure to the true posterior
+
+\begin{align*}
+    q^{*}(\thetavec) &= \argmin_{q(\thetavec) \in \mathcal{Q}} \text{D}_{\text{KL}} \left(q(\thetavec) || p(\thetavec | \yvec, \mathcal{D}) \right) \\
+    &= \argmin_{q(\thetavec) \in \mathcal{Q}} \int q(\thetavec) \ln \left( \frac{q(\thetavec)}{p(\thetavec | \yvec, \mathcal{D})} \right) \,d \thetavec \\
+    &= \argmin_{q(\thetavec) \in \mathcal{Q}} \text{E}_{q(\thetavec)} \left[ \ln \left( \frac{q(\thetavec)}{p(\thetavec | \yvec, \mathcal{D})} \right) \right] .
+\end{align*}
+
+- Flexibility of $\mathcal{Q}$ significantly influences the optimization 
+  - Complex $\mathcal{Q}$ $\rightarrow$ better approximation, but increased complexity during optimization
+  - Simple $\mathcal{Q}$ $\rightarrow$ worse approximation, but simpler optimization
+- Objective offers theoretical insights but remains **infeasible** to compute, due to containing the posterior (evidence)
+
+## Evidence Lower Bound  
+
+- Think about a way to introduce a mathematical **equivalent** objective that does not depend on the evidence 
+- Lets start with the log-evidence 
+  
+\footnotesize	
+\begin{align}
+    \ln(p(\yvec | \mathcal{D})) &= \int q(\thetavec | \phivec) \ln(p(\yvec | \mathcal{D})) \,d\thetavec \\
+    &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec | \mathcal{D}) p(\thetavec | \yvec, \mathcal{D})}{p(\thetavec | \yvec, \mathcal{D})} \right) \,d \thetavec \\
+    &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{p(\thetavec | \yvec, \mathcal{D})} \right) \,d \thetavec \\
+    &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{q(\thetavec | \phivec)} \frac{q(\thetavec | \phivec)}{p(\thetavec | \yvec, \mathcal{D})} \right) \,d \thetavec \\
+    &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{q(\thetavec | \phivec)} \right) \,d \thetavec + \int q(\thetavec | \phivec) \ln \left( \frac{q(\thetavec | \phivec)}{p(\thetavec | \yvec, \mathcal{D})} \right) \,d \thetavec \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \X)}{q(\thetavec | \phivec)} \right) \right] + \text{D}_{\text{KL}}(q(\thetavec | \phivec) || p(\thetavec | \yvec, \mathcal{D})) \label{eq-log-evidence}
+\end{align}
+\normalsize
+
+- Parameterize $q$ with $\phivec$
+
+## Optimization objective revisited
+
+- Rewrite \ref{eq-log-evidence} as 
+  
+\footnotesize
+\begin{align}
+    \ln(p(\yvec | \X)) - \text{D}_{\text{KL}}(q || p) = \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{q(\thetavec | \phivec)} \right) \right]
+\end{align}
+\normalsize
+
+- And take arg max w.r.t. $\phivec$
+
+\footnotesize
+\begin{align*}
+    \argmax_{\phivec} \ln(p(\yvec | \mathcal{D})) - \text{D}_{\text{KL}}(q || p) &= \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{q(\thetavec | \phivec)} \right) \right] \\
+    \argmax_{\phivec} - \text{D}_{\text{KL}}(q || p) &= \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{q(\thetavec | \phivec)} \right) \right] \\
+    \argmin_{\phivec} \text{D}_{\text{KL}}(q || p) &= \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{q(\thetavec | \phivec)} \right) \right]
+\end{align*}
+\normalsize
+
+---
+
+- New optimization objective 
+  
+\begin{align*}
+    \hat{\phivec} &= \argmax_{\phivec} \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{q(\thetavec | \phivec)} \right) \right] \\
+    &= \argmax_{\phivec} \text{ELBO}(\phivec)
+\end{align*}
+
+- Take a breath 😮‍💨
+
+---
+
+- What does the ELBO ?
+
+\begin{align}
+    \text{ELBO}(\phivec) &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec, \thetavec | \mathcal{D})}{q(\thetavec | \phivec)} \right) \right] \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln \left( \frac{p(\yvec| \mathcal{D}, \thetavec)p(\thetavec)}{q(\thetavec | \phivec)} \right) \right] \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln(p(\yvec| \mathcal{D}, \thetavec)) \right] + \text{E}_{q(\thetavec | \phivec)} \left[ \ln(p(\thetavec)) \right] - \text{E}_{q(\thetavec | \phivec)} \left[ \ln(q(\thetavec | \phivec)) \right] \\
+    &= \text{E}_{q(\thetavec | \phivec)} \left[ \ln(p(\yvec| \mathcal{D}, \thetavec)) \right] - \text{D}_{\text{KL}} \left( q(\thetavec | \phivec) || p(\thetavec) \right)
+\end{align}
+
+- Actually something similar to MAP/ML 🤔
+
+## Variational family 
+
+- What is the $\mathcal{Q}$ and thus $q(\thetavec | \phivec)$ ? 
+- Start simple 
+
+\begin{align*}
+    q(\thetavec | \phivec) = \prod_{j=1}^{J}q_{j}(\theta_{j} | \phivec_{j})
+\end{align*}
+
+- Known as mean-field variational family
+- $q_{j}$ factors in the variational distribution
+  - Some parameteric distribution that respects the parameter space of $\thetavec_{j}$
+  - All model parameters are independent 
+
+--- 
+
+![Mean-field approximation to a 2-D multivariate normal distribution, based on @Blei2017 [p. 9, figure 1].](assets/plot1.pdf){width=60% fig-scap="Mean-field approximation." #fig-mean-field}
+
+--- 
+
+- Augment the variational distribution to blocks of parameters
+- Structured mean-field variational inference [@Wainwright2007]
+  
+\begin{align*}
+    q(\thetavec | \phivec) = \prod_{j=1}^{J}q_{j}(\thetavec_{j} | \phivec_{j})
+\end{align*}
+
+- Captures interdependencies for blocks of parameters 
+
+## Coordinate ascent variational inference (side node)
+
+- Traditional way of solving opt. objective is CAVI [@Blei2017]
+  - However CAVI does not scale well
+  - Closely connected to Gibbs sampling 
+  - Only works for conditional conjugate models
+  - If you search for VI CAVI is still all over the place, see f.e. [wikipedia](https://en.wikipedia.org/wiki/Variational_Bayesian_methods)
+- Of course we want to be able to also conduct inference in non-conjugate models ❌
+
+## Stochastic variational inference 
+
+- SGD to optimize the ELBO [@Hoffman2012]
+- 2 sources of stochasticity 
+  - We use a subset $\mathcal{I}$ of the data in each iteration (ELBO remains unbiased)
+  - We need to evaluate the integral in the ELBO
+  
+\begin{align}
+    \text{ELBO}(\phivec)_{\mathcal{I}} &= \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec_{\mathcal{I}}, \thetavec | \mathcal{D}_{\mathcal{I}})}{q(\thetavec | \phivec)} \right) \,d \thetavec \label{eq-elbo-int}\\
+    \nabla_{\phivec} \text{ELBO}(\phivec) &= \nabla_{\phivec} \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec_{\mathcal{I}}, \thetavec | \mathcal{D}_{\mathcal{I}})}{q(\thetavec | \phivec)} \right) \,d \thetavec \label{eq-elbo-grad}
+\end{align}
+
+---
+
+- Common method to solve this problem is Monte Carlo integration 
+
+\begin{align}
+    \nabla_{\phivec} \text{ELBO}(\phivec)_{\mathcal{I}} &= \nabla_{\phivec} \int q(\thetavec | \phivec) \ln \left( \frac{p(\yvec_{\mathcal{I}}, \thetavec | \mathcal{D}_{\mathcal{I}})}{q(\thetavec | \phivec)} \right) \,d \thetavec \\
+    &\approx \nabla_{\phivec} \frac{1}{S} \sum_{s=1}^{S} \ln \left( \frac{p(\yvec_{\mathcal{I}}, \thetavec^{s} | \mathcal{D}_{\mathcal{I}})}{q(\thetavec^{s} | \phivec)} \right), \ \thetavec^{s} \sim q(\thetavec | \phivec) \label{eq-mc-elbo-grad}.
+\end{align}
+
+- But this does not work 😢
+- If we change $\phivec$ even infinitessimal the samples $\thetavec^{s}$ are invalid, which we used to calculate $\nabla_{\phivec}\text{ELBO}(\phivec)_{\mathcal{I}}$ in the first place 
+  
+--- 
+
+\begin{figure}
+\centering
+    \begin{tikzpicture}
+        % Define nodes
+        \node[obs] (y) {$y_{i}$};
+        \node[const, above=of y] (x) {$\mathbf{x}_{i}$};
+        \node[latent, right=of y, xshift=1cm] (t) {$\boldsymbol{\theta}^{s}$};
+        \node[const, above=of t] (p) {$\boldsymbol{\phi}$};
+
+        % Connect the nodes
+        \edge [shorten <= 2pt] {x,t} {y};
+        \edge [shorten <= 2pt] {p} {t};
+
+        % Plates
+        \plate {yx} {(y)(x)} {$i = 1, \dots, n$} ;
+        \plate {t} {(t)} {$s = 1, \dots, S$} ;
+    \end{tikzpicture}
+\caption{Plate notation of the dependence structure in a Bayesian regression model for VI, when sampling from the variational distribution.}
+\end{figure}
+
+## Reparameterization gradient estimator
+
+- Reparapemeterize $\thetavec = \gvec_{\phivec}(\epsilonvec)$, with a bijective function $\gvec_{\phivec}$ such that we can use SGD with Monte Carlo integration [@Kingma2013; @Rezende2014; @Kucukelbir2016] 
+- Amounts to using the (multivariate) change of variable theorem for probability density functions
+
+\begin{align*}
+    \gvec_{\phivec} : \mathbb{R}^{d} &\to \mathbb{R}^{d}; \ \thetavec, \epsilonvec \in \mathbb{R}^{d} \\
+    \thetavec &= \gvec_{\phivec}(\epsilonvec), \; \epsilonvec \sim \mathcal{N}(\zerovec, \I)\\
+    q(\thetavec | \phivec) &= \begin{cases}
+                    p_{\epsilonvec}(\gvec^{-1}_{\phivec}(\thetavec)) \left|\det(\J_{\gvec^{-1}_{\phivec}})\right|, & \text{if $\thetavec$ is in the codomain of $\gvec_{\phivec}$}\\
+                    0, & \text{else.}
+                    \end{cases}
+\end{align*}
+
+---
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+    % Define nodes
+    \node[obs] (y) {$y_{i}$};
+    \node[const, above=of y] (x) {$\mathbf{x}_{i}$};
+    \node[latent, right=of y] (t) {$\boldsymbol{\theta}^{s}$};
+    \node[const, above=of t] (p) {$\boldsymbol{\phi}$};
+    \node[latent, right=of t, xshift=1cm] (e) {$\boldsymbol{\epsilon}^{s}$};
+    \node[const, above=of e, xshift=-1cm] (mu) {$\boldsymbol{\mu}_{\boldsymbol{\epsilon}}$};
+    \node[const, above=of e, xshift=1cm] (sig) {$\boldsymbol{\Sigma}_{\boldsymbol{\epsilon}}$};
+
+    % Connect the nodes
+    \edge [shorten <= 2pt] {x,t} {y};
+    \edge [shorten <= 2pt] {mu,sig} {e};
+    \edge [shorten <= 2pt] {p} {t};
+    \edge [shorten <= 2pt] {e} {t};
+
+    % Plates
+    \plate {yx} {(y)(x)} {$i = 1, \dots, n$} ;
+    \plate {e} {(e)} {$s = 1, \dots, S$} ;
+\end{tikzpicture}
+\caption{Plate notation of the dependence structure in a Bayesian regression model in VI, using the "reparameterization-trick".}
+\end{figure}
+
+--- 
+
+- This "trick" allows us to pull the gradient operator inside of the monte carlo integral and use the chain rule
+
+\footnotesize
+\begin{align*}
+    \nabla_{\phivec} \text{ELBO}(\phivec)_{\mathcal{I}} &\approx \frac{1}{S} \sum_{s=1}^{S} \nabla_{\phivec} \ln \left( \frac{p(\yvec_{\mathcal{I}}, \thetavec = \gvec_{\phivec}(\epsilonvec)| \mathcal{D}_{\mathcal{I}})}{q(\thetavec = \gvec_{\phivec}(\epsilonvec) | \phivec)} \right) \Bigr\rvert_{\thetavec = \thetavec^{s}} \\
+    &\approx \frac{1}{S} \sum_{s=1}^{S} \nabla_{\thetavec} \ln \left( \frac{p(\yvec_{\mathcal{I}}, \thetavec = \gvec_{\phivec}(\epsilonvec)| \mathcal{D}_{\mathcal{I}})}{q(\thetavec = \gvec_{\phivec}(\epsilonvec) | \phivec)} \right) \Bigr\rvert_{\thetavec = \thetavec^{s}} \nabla_{\phivec} \gvec_{\phivec}(\epsilonvec^{s}), \\
+    \text{with} \; \thetavec_{\phivec}^{s} &= \gvec_{\phivec}(\epsilonvec^{s}), \; \epsilonvec^{s} \sim \mathcal{N}(\zerovec, \I), \ s = 1, \dots, S
+\end{align*}
+\normalsize
+
+- Opens the door for backpropagation and thus automatic diff. 💡
+
+## "Black-box" variational inference
+
+- Using SVI with the reparameterization gradient estimator 
+- Researcher only formulates a probabilistic model and provides a dataset [@Kucukelbir2016], inference algo. is model "agnostic"
+- What is $\gvec_{\phivec}$?
+  -  Linear and non-linear choices
+  -  We consider linear choice
+
+\begin{align*}
+    \thetavec_{j} &= \Lbold_{j} \epsilonvec_{j} + \muvec_{j}, \epsilonvec_{j} \sim \mathcal{N}(\zerovec, \I) \\
+    \thetavec_{j} &\sim \mathcal{N}(\muvec_{j}, \Lbold_{j} \Lbold_{j}^{\mathrm{T}})
+\end{align*}
+
+- For positive restricted parameters we need to chain another transformation layer via $\exp$ transformation
+-  Chaining variable transformations 💭 
+   -  Normalizing flows [@Rezende2014]
+   -  Allow for expressive $\mathcal{Q}$s but are more difficult to optimize
+
+## Optimization 
+
+- We use Adam [@Kingma2014]
+
+\begin{align*}
+    \hat{\phivec}^{t} = \hat{\phivec}^{t-1} + \rho_{t} \nabla_{\phivec} \text{ELBO}(\phivec)_{\mathcal{I}^{t}} \Bigr\rvert_{\phivec = \hat{\phivec}^{t-1}}
+\end{align*}
+
+## Full Algorithm 
+
+\begin{algorithm}[H]
+    \DontPrintSemicolon
+    \scriptsize
+    \SetKwInOut{Require}{Require}
+    \KwData{$\mathcal{D}_{\text{train}}$; $\mathcal{D}_{\text{val}}$}
+    \Require{Learning rate $\alpha$; stopping threshold $\varepsilon$; mini-batch size $M$; share train $w$; num. var. samples $S$; num. epochs: $E$}
+    Initialize $\hat{\phivec}^{0}$; set $t = 1$ \;
+    \For{$e = 1$  \KwTo $E$}{
+        $n_{\text{train}} = |\mathcal{D}_{\text{train}}| * w$ \;
+        create the mini-batches, $\mathcal{B} = \{ \dots, \mathcal{I}^{k}, \dots \}, \ k=1, \dots, n_{\text{train}} // M \ (+1)$ \;
+        \For{$k=1$ \KwTo $n_{\text{train}} // M \ (+1)$}{
+        sample noise, $\epsilonvec^{s}_{j} \sim \mathcal{N}(\zerovec, \I), \ s=1,\dots, S, \ \forall j$ \;
+        calculate approx. gradient, $\nabla_{\phivec} \text{ELBO}(\phivec)_{\mathcal{I}^{k}} \Bigr\rvert_{\phivec = \hat{\phivec}^{t-1}}$\;
+        update variational parameters, $\hat{\phivec}^{t} = \hat{\phivec}^{t-1} + \rho_{t} \nabla_{\phivec} \text{ELBO}(\phivec)_{\mathcal{I}^{k}} \Bigr\rvert_{\phivec = \hat{\phivec}^{t-1}}$ \;
+        calculate approx. ELBO, $\text{ELBO}(\hat{\phivec}^{t})_{\mathcal{D}_{\text{val}}}$ \;
+        $t = t + 1$ \;
+        }
+        \eIf{$t > 200$}{
+            $\Delta \text{ELBO} = |\text{ELBO}(\hat{\phivec}^{t})_{\mathcal{D}_{\text{val}}} - \text{ELBO}(\hat{\phivec}^{t-200})_{\mathcal{D}_{\text{val}}}|$
+        }{$\Delta \text{ELBO} = \infty$
+        }
+        \If{$\Delta \text{ELBO} < \varepsilon$}{
+            \textbf{break}\;
+        }
+    }
+    \KwResult{$\hat{\phivec}$; $\text{ELBO}(\hat{\phivec})_{\mathcal{D}_{\text{val}}}$}
+    \caption{BBVI algorithm.}
+    \label{algo}
+\end{algorithm}
+
+## Impact Analysis 
+
+::: {layout="[[50,-5,50]]"}
+
+![ELBO traces for 3 different SGD runs, using different initializations but the same seed. We use a batch size of 128, 64 samples from the variational distribution and a learning rate of 1e-2.](assets/plot2.pdf){#fig-elbo-trace1}
+
+![ELBO traces for 3 different SGD runs, using different seeds but the same initialization. Otherwise same configuration as in @fig-elbo-trace1.](assets/plot3.pdf){#fig-elbo-trace2}
+
+:::
+
+---
+
+::: {layout="[[50,-5,50]]"}
+
+![ELBO traces for 3 different SGD runs, using different variational sample sizes. We use batch VI with a learning rate of 1e-2 and the same seed as in @fig-elbo-trace1.](assets/plot4.pdf){#fig-elbo-trace3}
+
+![ELBO traces for 3 different SGD runs, using different batch sizes. We use a variational sample size of 64 with a learning rate of 1e-2 and the same seed as in @fig-elbo-trace1.](assets/plot5.pdf){#fig-elbo-trace4}
+
+:::
+
+## Semiparametric distributional regression 
+
+- Not only normally distributed responses
+- Linear predictors with inverse link function
+- Structured addtive linear predictors so fixed and smooth effects
+  - B-spline basis functions
+- Augmented with priors 
+  - Bayesian P-splines 
+
+# Application
+
+## Implementation
+
+- Developed a small `python` package `tigerpy`, which consists of two libararies 
+- A model building library `tigerpy.model`
+  - Construct the model
+  - Uses the idea of probabilistic graphical models 
+- An inference library `tigerpy.bbvi`
+  - Runs the inference algorithm 
+- Alignes with concepts found in `liesel` [@Riebl2022]
+
+## Technology 
+
+When walking about the countryside of Italy, the people will not hesitate to tell you that JAX has ["una anima di pura programmazione funzionale"](https://www.sscardapane.it/iaml-backup/jax-intro/). (`JAX` [docs](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html), @jax)
+
+- There are great things about `JAX` 😍
+  - Uses a `numpy` flawored API
+  - Closely follows the math (`jax.grad`)
+  - Is fast (if you follow `JAX`s principles)
+- There are things that cause headaches 🥴
+  - Pure functions 
+  - Tracing 
+  - Efficiency considerations in JIT-compiled code 
+
+---
+
+- `tigerpy.model` constructs under the hood a DAG 
+- Employs the `networkx` package for constructing, traversing and visualizing the DAG
+
+![The DAG visualization for location-scale regression from the method `.visualize_graph()`.](assets/plot6.pdf){width=60%}
+
+## Simulation Studies 
+
+## Open Problems 
