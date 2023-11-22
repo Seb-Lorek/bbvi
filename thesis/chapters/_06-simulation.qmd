@@ -54,14 +54,14 @@ Ideally, we would anticipate observing zero bias across various $n_{\text{obs}}$
         \cmidrule(lr){6-9} 
         $n_{\text{obs}}$ & 500 & 1000 & 5000 & 10000 & 500 & 1000 & 5000 & 10000 \\
         \midrule
-        $\beta_{0}$ & -0.0412 & 0.0123 & 0.0004 & 0.0018 & 0.0780 & 0.0478 & 0.0246 & 0.0145 \\[-4pt]
-         & {\tiny(0.0110)} & {\tiny(0.0068)} & {\tiny(0.0035)} & {\tiny(0.0022)} & {\tiny(0.0079)} & {\tiny(0.0048)} & {\tiny(0.0025)} & {\tiny(0.0015)} \\
-        $\beta_{1}$ & -0.0037 & 0.0034 & -0.0015 & 0.0011 & 0.0293 & 0.0244 & 0.0079 & 0.0068 \\[-4pt]
-        & {\tiny(0.0041)} & {\tiny(0.0035)} & {\tiny(0.0011)} & {\tiny(0.0010)} & {\tiny(0.0030)} & {\tiny(0.0002)} & {\tiny(0.0001)} & {\tiny(0.0001)} \\
-        $\beta_{2}$ & 0.0093 & -0.0029 & -0.0006 & 0.0006 & 0.0194 & 0.0158 & 0.0062 & 0.0046 \\[-4pt]
-        & {\tiny(0.0027)} & {\tiny(0.0022)} & {\tiny(0.0009)} & {\tiny(0.0006)} & {\tiny(0.0020)} & {\tiny(0.0016)} & {\tiny(0.0006)} & {\tiny(0.0005)} \\
-        $\sigma$ & 0.0085 & -0.0060 & -0.0014 & -0.0006 & 0.0356 & 0.0223 & 0.0117 & 0.0077 \\[-4pt]
-        & {\tiny(0.0050)} & {\tiny(0.0032)} & {\tiny(0.0017)} & {\tiny(0.0011)} & {\tiny(0.0036)} & {\tiny(0.0023)} & {\tiny(0.0012)} & {\tiny(0.0008)} \\
+        $\beta_{0}$ & -0.0369 & 0.0027 & -0.0012 & -0.0001 & 0.0832 & 0.0543 & 0.0217 & 0.0149 \\[-4pt]
+         & {\tiny(0.0059)} & {\tiny(0.0038)} & {\tiny(0.0015)} & {\tiny(0.0011)} & {\tiny(0.0042)} & {\tiny(0.0027)} & {\tiny(0.0011)} & {\tiny(0.0007)} \\
+        $\beta_{1}$ & -0.0047 & -0.0016 & -0.0004 & 0.0008 & 0.0272 & 0.0205 & 0.0086 & 0.0071 \\[-4pt]
+        & {\tiny(0.0019)} & {\tiny(0.0015)} & {\tiny(0.0006)} & {\tiny(0.0005)} & {\tiny(0.0014)} & {\tiny(0.0010)} & {\tiny(0.0004)} & {\tiny(0.0004)} \\
+        $\beta_{2}$ & 0.0075 & 0.0002 & -0.0000 & 0.0004 & 0.0208 & 0.0144 & 0.0057 & 0.0042 \\[-4pt]
+        & {\tiny(0.0015)} & {\tiny(0.0010)} & {\tiny(0.0004)} & {\tiny(0.0003)} & {\tiny(0.0010)} & {\tiny(0.0007)} & {\tiny(0.0003)} & {\tiny(0.0002)} \\
+        $\sigma$ & 0.0106 & 0.0000 & -0.0017 & -0.0009 & 0.0377 & 0.0261 & 0.0112 & 0.0076 \\[-4pt]
+        & {\tiny(0.0027)} & {\tiny(0.0018)} & {\tiny(0.0008)} & {\tiny(0.0005)} & {\tiny(0.0019)} & {\tiny(0.0013)} & {\tiny(0.0006)} & {\tiny(0.0004)} \\
         \bottomrule
     \end{tabular}
     \begin{tablenotes}
@@ -89,10 +89,10 @@ The findings above are of course also visible for the bias and EmpSE of $\beta_{
         \cmidrule(lr){6-9}
         $n_{\text{obs}}$ & 500 & 1000 & 5000 & 10000 & 500 & 1000 & 5000 & 10000 \\
         \midrule
-        $\beta_{0}$ & -0.0636 & -0.0886 & -0.0507 & -0.0258 & 0.2308 & 0.1740 & 0.0774 & 0.0603 \\[-4pt]
-        & {\tiny(0.0326)} & {\tiny(0.0246)} & {\tiny(0.0110)} & {\tiny(0.0085)} & {\tiny(0.0233)} & {\tiny(0.0176)} & {\tiny(0.0078)} & {\tiny(0.0061)} \\
-        $\beta_{1}$ & -0.0249 & -0.0670 & -0.0444 & -0.0092 & 0.2631 & 0.2048 & 0.0829 & 0.0638 \\[-4pt]
-        & {\tiny(0.0372)} & {\tiny(0.0290)} & {\tiny(0.0117)} & {\tiny(0.0090)} & {\tiny(0.0266)} & {\tiny(0.0207)} & {\tiny(0.0084)} & {\tiny(0.0064)} \\
+        $\beta_{0}$ & -0.0537 & -0.0583 & -0.0421 & -0.0331 & 0.2295 & 0.1840 & 0.0718 & 0.0568 \\[-4pt]
+        & {\tiny(0.0162)} & {\tiny(0.0130)} & {\tiny(0.0051)} & {\tiny(0.0040)} & {\tiny(0.0115)} & {\tiny(0.0092)} & {\tiny(0.0036)} & {\tiny(0.0028)} \\
+        $\beta_{1}$ & -0.0280 & -0.0443 & -0.0330 & -0.0172 & 0.2758 & 0.2006 & 0.0774 & 0.0540 \\[-4pt]
+        & {\tiny(0.0195)} & {\tiny(0.0142)} & {\tiny(0.0055)} & {\tiny(0.0038)} & {\tiny(0.0138)} & {\tiny(0.0101)} & {\tiny(0.0039)} & {\tiny(0.0027)} \\
         \bottomrule
     \end{tabular}
     \begin{tablenotes}
@@ -119,9 +119,9 @@ $$
 \end{split}
 $$
 
-which we denote in the following as data generating process (DGP). For the obervation sample size we use $n_{\text{obs}}=1000$. We slightly heightened the frequency and amplitude of the $\sin$ function to augment the complexity of estimating the function. The target here is to visually asses the fit of the function and compare the posterior distributions of MCMC and BBVI through plots and a metric. To estimate the posterior distribution with BBVI we use our implementation (`tigerpy`) and for MCMC we use the software package `liesel` [@Riebl2022]. For both models we specify a structured additive linear predictor for the location with a fixed intercept and a smooth effect through Bayesian P-splines. We opt for 20 knots, a degree of 3 and a random walk order of 2. In BBVI we again don't use a model specific initialization and set $\muvec_{j}=\zerovec$, $\diag(\Lbold_{j}) = 2\onevec$ for the scale parameter ($\sigma$) and $\diag(\Lbold_{j}) = \onevec$ else. This is done to fairly compare BBVI with MCMC in `liesel` where we also don't provide a model specific initialization. Furthermore we fix the epoch size to 500, the learning rate to 1e-2, the batch-size to 256, the training share to 0.8 and use 64 samples to evaluate the Monte Carlo integral. For the MCMC algorithm we use iterated weighted least squares (IWLS) Kernels for the parameters in the linear predictor, a No U-Turn sampler (NUTS) Kernel for $\sigma$ and finally a Gibbs sampler for the inverse smoothing parameter $\tau^{2}$. We use 1000 samples for the burn-in and after that obtain again 1000 samples from the chain. To further evaluate the stability of the results, a common practice in MCMC involves running multiple independent chains, four in our case. Similarly, with the BBVI algorithm, we conducted multiple runs, using different seeds, to compare the resulting posterior distributions. As MCMC furnishes samples from the posterior distribution, we utilized our optimized variational distribution to derive samples. This approach allows for a fair comparison of the resulting kernel density estimates between both methods. To quantify the proximities of the two samples we decide to use the Wasserstein meteric [REF], which allows to compare two samples from a probability distribution in terms of their closeness.
+which we denote in the following as data generating process (DGP). For the obervation sample size we use $n_{\text{obs}}=1000$. We slightly heightened the frequency and amplitude of the $\sin$ function to augment the complexity of estimating the function. The target here is to visually asses the fit of the function and compare the posterior distributions of MCMC and BBVI through plots and a metric. To estimate the posterior distribution with BBVI we use our implementation (`tigerpy`) and for MCMC we use the software package `liesel` [@Riebl2022]. For both models we specify a structured additive linear predictor for the location with a fixed intercept and a smooth effect through Bayesian P-splines. We opt for 20 knots, a degree of 3 and a random walk order of 2. In BBVI we again don't use a model specific initialization and set $\muvec_{j}=\zerovec$, $\diag(\Lbold_{j}) = 2\onevec$ for the scale parameter ($\sigma$) and $\diag(\Lbold_{j}) = \onevec$ else. This is done to fairly compare BBVI with MCMC in `liesel` where we also don't provide a model specific initialization. Furthermore we fix the epoch size to 500, the learning rate to 1e-2, the batch-size to 256, the training share to 0.8 and use 64 samples to evaluate the Monte Carlo integral. For the MCMC algorithm we use iterated weighted least squares (IWLS) Kernels for the parameters in the linear predictor, a No U-Turn sampler (NUTS) Kernel for $\sigma$ and finally a Gibbs sampler for the inverse smoothing parameter $\tau^{2}$. We use 1000 samples for the burn-in and after that obtain again 1000 samples from the chain. To further evaluate the stability of the results, a common practice in MCMC involves running multiple independent chains, four in our case. Similarly, with the BBVI algorithm, we conducted multiple runs, using different seeds, to compare the resulting posterior distributions. As MCMC furnishes samples from the posterior distribution, we utilized our optimized variational distribution to derive samples. This approach allows for a fair comparison of the resulting kernel density estimates between both methods. To quantify the proximities of the two samples we decide to use the Wasserstein metric [@Kantorovich1960], which allows to compare two samples from a probability distribution in terms of their closeness.
 
-The DGP is visualized in @fig-sim2-dgp and the resulting fits for both BBVI and MCMC using the posterior means are shown in @fig-sim2-post-means. Both methods result in surprisingly similar fits and both are able to capture the smooth function well. Even though BBVI only approximates the posterior distribution with a simpler distribution it intersting to observe how well it inferes the posterior means, which already has been shown in [Chapter @sec-cons-study]. Overall, BBVI generally presents a slightly inferior fit. Nevertheless, it does demonstrate a superior fit for specific oscillations when compared to MCMC. Specifically, at the left boundary, BBVI produces a less accurate fit than MCMC.
+The DGP is depicted in @fig-sim2-dgp, while the fits resulting from 1 run of BBVI and 1 chain from MCMC, utilizing the posterior means, are presented in @fig-sim2-post-means. Both methods result in surprisingly similar fits and both are able to capture the smooth function well. Even though BBVI only approximates the posterior distribution with a simpler distribution it intersting to observe how well it inferes the posterior means, which already has been shown in [Chapter @sec-cons-study]. Overall, BBVI generally presents a slightly inferior fit. Nevertheless, it does demonstrate a superior fit for specific oscillations when compared to MCMC. Specifically, at the left boundary, BBVI produces a less accurate fit than MCMC.
 
 ::: {layout="[[50,-5,50]]"}
 
@@ -142,6 +142,27 @@ Moreover for the inverse smoothing parameter $\tau^{2}$ we also obtain a conside
 ![Kernel density for the posterior samples of the inverse smoothing parameter, using 4 runs from BBVI (red) and 4 chains from MCMC (blue).](assets/plots/plot15.pdf){width=60% fig-scap="Kernel density for the posterior samples of the inverse smoothing parameter." #fig-sim2-tau2}
 
 ![Kernel density for the posterior samples of the scale, using 4 runs from BBVI (red) and 4 chains from MCMC (blue).](assets/plots/plot16.pdf){width=60% fig-scap="Kernel density for the posterior samples of the scale parameter." #fig-sim2-scale}
+
+\begin{table}[htbp]
+\centering
+\caption{Average Wasserstein metric ($\bar{W}_{2}$) for the posterior samples of the model parameters.}
+    \begin{threeparttable}
+        \begin{tabular}{lllll}
+        \toprule
+         & \multicolumn{4}{c}{Parameters} \\
+        \cmidrule(lr){2-5} 
+         & $\beta_{0}$ & $\gammavec$ & $\sigma$ & $\tau^{2}$ \\
+        \midrule
+        $\bar{W}_{2}$ & 0.0172 & 1.5726 & 0.0193 & 1.5620 \\
+        \bottomrule
+        \end{tabular}
+    \begin{tablenotes}
+      \footnotesize	
+      \item We calculated $\bar{W}_{2}$ by averaging across 16 $W_{2}$ metrics, by comparing each MCMC chain with all 4 BBVI runs. 
+    \end{tablenotes}
+\end{threeparttable}
+\label{tbl-4}
+\end{table}
 
 ## Posterior density study II
 
