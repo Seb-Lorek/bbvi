@@ -4,4 +4,8 @@ bibliography: ["bib/references.bib", "bib/packages.bib"]
 
 # Conclusion {#sec-concl}
 
-The thesis didn't find anything new.
+## Open Problems {#sec-probs}
+
+In this section we explicity adress one promimnent issue that emerged while studying BBVI. Exp
+
+

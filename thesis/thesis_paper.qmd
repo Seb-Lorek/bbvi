@@ -16,7 +16,7 @@ format:
         cite-method: biblatex
         biblatexoptions:
         - backend=biber
-        - maxbibnames=999
+        - maxbibnames=4
         - maxcitenames=2
         - uniquename=false
         - uniquelist=false
