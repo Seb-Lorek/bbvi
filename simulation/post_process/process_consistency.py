@@ -27,7 +27,7 @@ def check_missing_data(results):
     
     exist_missing = False
     for data_dict in missing_data:
-        for key, value in data_dict.items():
+        for value in data_dict.values():
             if value != None:
                 exist_missing = True
                 break
@@ -74,9 +74,14 @@ def plot_univariate(data_plot):
     else:
         print(f"Directory '{folder_path}' already exists.")
 
+    true_coefs = {"normal": {"loc": [3.0, 0.2, -0.5], "scale":[1.0]}, 
+                  "bernoulli": {"logit": [1.0, 2.0]}}
+
     fig_count = 1
-    for response_dist in data_plot.values():
-        for key, value in response_dist.items():
+    for response_dist, true_coef in zip(data_plot.values(), true_coefs.values()):
+        for est, true in zip(response_dist.items(), true_coef.items()):
+            key, value = est
+            key_true, value_true = true
             filename = "plot" + "_" + str(fig_count) + ".pdf"
             full_filepath = os.path.join(folder_path, 
                                          filename)
@@ -87,6 +92,7 @@ def plot_univariate(data_plot):
                 if key == "scale":
                     label = r"\hat{\sigma}"
                 fig, ax = plt.subplots(figsize=(10,6))
+                ax.axvline(x=value_true, color="grey", linestyle= "--", alpha=0.6)
                 sns.kdeplot(value, x=param, hue="n_obs", bw_adjust=1.5, palette="colorblind")
                 ax.set_xlabel(rf"${label}$")
             else: 
@@ -95,6 +101,7 @@ def plot_univariate(data_plot):
                     param = key + "_" + str(i)
                     if key in ["loc", "logits"]:
                         label = r"\hat{\beta}"
+                        axs[i].axvline(x=value_true[i], color="grey", linestyle= "--", alpha=0.6)
                     sns.kdeplot(value, x=param, hue="n_obs", bw_adjust=1.5, ax=axs[i], palette="colorblind")
                     axs[i].set_xlabel(rf"${label}_{{{str(i)}}}$")
                     axs[i].set_ylabel("")

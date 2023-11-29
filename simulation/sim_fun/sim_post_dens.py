@@ -9,6 +9,7 @@ import os
 import time 
 import itertools
 import logging 
+from joblib import Parallel, delayed
 
 from typing import (
     Union,
@@ -68,7 +69,7 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 # Function to execute the simulation study 
-def sim_fun(n_obs: int, key: jax.Array) -> Tuple[dict, dict]:
+def sim_fun(n_sim: int, n_obs: int, key: jax.Array) -> Tuple[dict, dict]:
     # Create the grid of parameters of the simulation study
     var_grid = create_var_grid(n_obs)
 
@@ -95,7 +96,8 @@ def sim_fun(n_obs: int, key: jax.Array) -> Tuple[dict, dict]:
     sim_results = {}
     for config in var_grid:
         key, subkey = jax.random.split(key)
-        post_results = do_one(data_dict, config["library"], subkey)
+
+        post_results = run_model(n_sim, data_dict, config["library"], subkey)
         plot_results.append(post_results)
         post_samples = process_results(post_results, config["library"])
         sim_results[config["library"]] = post_samples
@@ -125,11 +127,11 @@ def create_var_grid(n_obs: int) -> Dict:
 
     return var_grid
 
-def do_one(data_dict: Dict, library: str, key: jax.Array) -> List:
+def run_model(n_sim: int, data_dict: Dict, library: str, key: jax.Array) -> List:
     key, *subkeys = jax.random.split(key, 3)
 
     model_obj = model_set_up(data_dict["data"], library, subkeys[0])
-    post_results = do_inference(model_obj, library, subkeys[1])
+    post_results = do_inference(n_sim, model_obj, library, subkeys[1])
 
     return post_results
 
@@ -224,8 +226,8 @@ def model_set_up(data: Dict, library: str, key: jax.Array) -> Union[tiger.ModelG
         builder.set_initial_values(model.state)
 
         builder.add_kernel(tau2_gibbs_kernel(smooth_group_1))
-        builder.add_kernel(gs.IWLSKernel(["smooth_1_coef"]))
-        builder.add_kernel(gs.IWLSKernel(["beta"]))
+        builder.add_kernel(gs.NUTSKernel(["smooth_1_coef"]))
+        builder.add_kernel(gs.NUTSKernel(["beta"]))
         builder.add_kernel(gs.NUTSKernel(["sigma_transformed"]))
 
         builder.set_duration(warmup_duration=1000, posterior_duration=1000)
@@ -236,29 +238,32 @@ def model_set_up(data: Dict, library: str, key: jax.Array) -> Union[tiger.ModelG
         final_obj._show_progress = False
     return final_obj     
 
-def do_inference(model_obj: Any, library: str, key: jax.Array) -> Any:
+def do_inference(n_sim: int, model_obj: Any, library: str, key: jax.Array) -> Any:
     if library == "tigerpy":
-        results = []
-        for _ in range(4):
-            key, subkey = jax.random.split(key)
-            q = bbvi.Bbvi(graph=model_obj,
-                          jitter_init=True,
-                          verbose=False)
-            q.run_bbvi(key=subkey,
-                       learning_rate=0.01,
-                       grad_clip=1,
-                       threshold=1e-2,
-                       batch_size=256,
-                       train_share=0.8,
-                       num_var_samples=64,
-                       chunk_size=50,
-                       epochs=500)
-            results.append(q)    
+        subkeys_sim = [jax.random.fold_in(key, i) for i in range(n_sim)]
+        results = Parallel(n_jobs=-2)(delayed(run_tiger)(model_obj,
+                                                         subkeys_sim[i]) for i in range(n_sim))   
     elif library == "liesel":
         model_obj.sample_all_epochs()
         results = model_obj.get_results()
 
     return results
+
+def run_tiger(model_obj: Any, key: jax.Array) -> Any:
+    q = bbvi.Bbvi(graph=model_obj,
+                  pre_train=False,
+                  jitter_init=True,
+                  verbose=False)
+    q.run_bbvi(key=key,
+               learning_rate=0.01,
+               grad_clip=1,
+               threshold=1e-2,
+               batch_size=256,
+               train_share=0.8,
+               num_var_samples=64,
+               chunk_size=50,
+               epochs=500)
+    return q
 
 def plot_fns(posteriors: List, data: pd.DataFrame, savepath: str) -> None:
 

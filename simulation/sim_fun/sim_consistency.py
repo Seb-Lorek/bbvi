@@ -55,7 +55,7 @@ def sim_fun(n_sim: int, key: jax.random.PRNGKey) -> Dict:
 def create_var_grid(n_sim: int) -> Dict:
     var_dict = {"n_sim": [n_sim],
                 "response_dist": ["normal", "bernoulli"],
-                "n_obs": [500, 1000, 5000, 10000],
+                "n_obs": [50, 100, 500, 1000, 5000],
     }
 
     # Create a list of keys and values from the var_dict
@@ -78,7 +78,7 @@ def do_one(response_dist: str, n_obs: int, key: jax.random.PRNGKey) -> Tuple[dic
         data_dict = sim_data.bernoulli_linear(n_obs, subkeys[0])
     
     model_obj = model_set_up(data_dict["data"], response_dist)
-    q = do_inference(model_obj, n_obs, subkeys[1])
+    q = do_inference(model_obj, subkeys[1])
 
     result = return_target(q, response_dist)
     
@@ -174,31 +174,20 @@ def model_set_up(data: Dict, response_dist: Any) -> tiger.ModelGraph:
     return graph
 
 # Run the inference algorithm 
-def do_inference(graph, n_obs, key):
+def do_inference(graph, key):
     q = bbvi.Bbvi(graph=graph,
+                  pre_train=False,
                   jitter_init=True,
                   verbose=False)
-
-    if n_obs <= 1000:
-        q.run_bbvi(key=key,
-                   learning_rate=0.01,
-                   grad_clip=1,
-                   threshold=1e-2,
-                   batch_size=128,
-                   train_share=0.8,
-                   num_var_samples=64,
-                   chunk_size=50,
-                   epochs=250)
-    elif n_obs > 1000:
-        q.run_bbvi(key=key,
-                   learning_rate=0.001,
-                   grad_clip=1,
-                   threshold=1e-2,
-                   batch_size=128,
-                   train_share=0.8,
-                   num_var_samples=64,
-                   chunk_size=50,
-                   epochs=250)    
+    q.run_bbvi(key=key,
+               learning_rate=0.01,
+               grad_clip=1,
+               threshold=1e-2,
+               batch_size=36,
+               train_share=0.8,
+               num_var_samples=64,
+               chunk_size=50,
+               epochs=250)
     
     return q
 

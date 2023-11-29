@@ -42,6 +42,7 @@ if __name__ == "__main__":
 
     # Plot the univariate distributions 
     data_plot = proc1.create_data_plot(results1, var_grid1)
+
     proc1.plot_univariate(data_plot)
 
     # Create the performance measure dataset 
@@ -51,15 +52,23 @@ if __name__ == "__main__":
     proc1.create_latex_table(results_proc1)
 
     # Import simulation results 2
+    # Set the starting key for simulation 2 
+    key = jax.random.PRNGKey(175380738)
+    keys = jax.random.split(key, 3)
+    n_sim = 400
+    n_obs = 1000
+
     filename = "sim2_raw.pickle"
     full_filepath = os.path.join(folder_path, filename)
 
     with open(full_filepath, 'rb') as file:
         results2 = pickle.load(file)
 
-    proc2.plot_post_dens(results2)
+    proc2.plot_post_dens(results2, n_sim, keys[1])
 
-    sim2_proc = proc2.calc_wasserstein(results2)
+    sim2_proc = proc2.calc_wasserstein(results2, keys[2])
+
+    proc2.plot_wasserstein(sim2_proc)
 
     proc2.create_latex_table(sim2_proc)
 

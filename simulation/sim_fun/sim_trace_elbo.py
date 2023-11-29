@@ -187,6 +187,7 @@ key, subkey = jax.random.split(key)
 
 # Run the inference
 q1 = bbvi.Bbvi(graph=graph1, 
+               pre_train=False,
                jitter_init=False, 
                verbose=False)
 q1.run_bbvi(key=subkey,
@@ -198,6 +199,7 @@ q1.run_bbvi(key=subkey,
             epochs=100)
 
 q2 = bbvi.Bbvi(graph=graph2, 
+               pre_train=False,
                jitter_init=False, 
                verbose=False)
 q2.run_bbvi(key=subkey,
@@ -209,6 +211,7 @@ q2.run_bbvi(key=subkey,
             epochs=100)
 
 q3 = bbvi.Bbvi(graph=graph3, 
+               pre_train=False,
                jitter_init=False, 
                verbose=False)
 q3.run_bbvi(key=subkey,
@@ -309,6 +312,7 @@ q4 = q1
 key, *subkeys = jax.random.split(key, 3)
 
 q5 = bbvi.Bbvi(graph=graph1, 
+               pre_train=False,
                jitter_init=False, 
                verbose=False)
 q5.run_bbvi(key=subkeys[0],
@@ -320,6 +324,7 @@ q5.run_bbvi(key=subkeys[0],
             epochs=100)
 
 q6 = bbvi.Bbvi(graph=graph1, 
+               pre_train=False,
                jitter_init=False, 
                verbose=False)
 q6.run_bbvi(key=subkeys[1],
@@ -385,6 +390,7 @@ Change the variational samples size 1, 32, 64, with batch VI.
 start_time = time.time()
 
 q7 = bbvi.Bbvi(graph=graph1, 
+               pre_train=False,
                jitter_init=False, 
                verbose=False)
 q7.run_bbvi(key=subkey,
@@ -396,6 +402,7 @@ q7.run_bbvi(key=subkey,
             epochs=500)
 
 q8 = bbvi.Bbvi(graph=graph1, 
+               pre_train=False,
                jitter_init=False, 
                verbose=False)
 q8.run_bbvi(key=subkey,
@@ -408,6 +415,7 @@ q8.run_bbvi(key=subkey,
 
 q9 = bbvi.Bbvi(graph=graph1, 
                jitter_init=False, 
+               pre_train=False,
                verbose=False)
 q9.run_bbvi(key=subkey,
             learning_rate=0.01,
@@ -471,6 +479,7 @@ Change the batch-size 128, 256, 512, with variational samples of size=64.
 start_time = time.time()
 
 q10 = bbvi.Bbvi(graph=graph1, 
+                pre_train=False,
                 jitter_init=False, 
                 verbose=False)
 q10.run_bbvi(key=subkey,
@@ -482,6 +491,7 @@ q10.run_bbvi(key=subkey,
              epochs=500)
 
 q11 = bbvi.Bbvi(graph=graph1, 
+                pre_train=False,
                 jitter_init=False, 
                 verbose=False)
 q11.run_bbvi(key=subkey,
@@ -493,6 +503,7 @@ q11.run_bbvi(key=subkey,
              epochs=750)
 
 q12 = bbvi.Bbvi(graph=graph1, 
+                pre_train=False,
                 jitter_init=False, 
                 verbose=False)
 q12.run_bbvi(key=subkey,

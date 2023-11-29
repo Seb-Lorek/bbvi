@@ -132,10 +132,11 @@ if __name__ == "__main__":
 
     # Set the starting key for simulation 2 
     key = jax.random.PRNGKey(175380738)
-    
+    keys = jax.random.split(key, 3)
+    n_sim = 400
     n_obs = 1000
     
-    results2, var_grid2 = sim2.sim_fun(n_obs, key)
+    results2, var_grid2 = sim2.sim_fun(n_sim, n_obs, keys[0])
 
     # Create the full path to the file
     filename = "sim2_raw.pickle"
@@ -145,9 +146,19 @@ if __name__ == "__main__":
     with open(full_filepath, "wb") as file:
         pickle.dump(results2, file)
 
-    proc2.plot_post_dens(results2)
+    # Check for missing values 
+    missing_data, exist_missing = proc2.check_missing_data(results2)
 
-    sim2_proc = proc2.calc_wasserstein(results2)
+    # Export missing data only if there are missing values 
+    if exist_missing: 
+        filename = "sim2_missing.pickle"
+        full_filepath = os.path.join(folder_path, filename)
+        with open(full_filepath, "wb") as file:
+            pickle.dump(missing_data, file)
+
+    proc2.plot_post_dens(results2, n_sim, keys[1])
+
+    sim2_proc = proc2.calc_wasserstein(results2, keys[2])
 
     # Create the full path to the file
     filename = "sim2_proc.pickle"
@@ -157,19 +168,21 @@ if __name__ == "__main__":
     with open(full_filepath, "wb") as file:
         pickle.dump(results2, file)
 
+    proc2.plot_wasserstein(sim2_proc)
+
     proc2.create_latex_table(sim2_proc)
 
     # Track end time of simulation 2
     end_time = time.time()
     time_elapsed = end_time - start_time 
-    print(f"Time elapsed for simulation 2 n_obs={n_obs}:{time_elapsed/60:.2f} minutes")
+    print(f"Time elapsed for simulation 2 n_sim={n_sim}:{time_elapsed/60:.2f} minutes")
 
     # Start simulation study 3 
     print("Start simulation study 3")
 
     start_time = time.time()
 
-
+    # TBA
 
     # Track end time of simulation 1
     end_time = time.time()
