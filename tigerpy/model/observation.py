@@ -55,7 +55,6 @@ class Obs:
             self.fixed_dim = self.fixed_data.shape[1]
             self.fixed_incl = True
         else:
-            print("Design matrix contains already smooth terms")
             raise ValueError("Fixed covariate effects must be defined first.")
 
     def smooth(self, data: np.ndarray, n_knots: int=20, degree: int=3, rwk: int=2) -> None:
@@ -93,7 +92,7 @@ class Obs:
                 self.design_matrix = np.asarray(smooth_matrix, dtype=np.float32)
                 self.smooth_incl = True
         else:
-            if self.smooth_incl is None:
+            if self.smooth_incl is False:
                 self.smooth_incl = True
 
     def center(self) -> np.ndarray:
