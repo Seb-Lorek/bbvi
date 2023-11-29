@@ -4,6 +4,7 @@ Initialize the variational parameters.
 
 import jax
 import jax.numpy as jnp
+
 from scipy.linalg import block_diag
 
 import tensorflow_probability.substrates.jax.distributions as tfjd
@@ -238,13 +239,15 @@ def set_log_cholesky_prec(prec_diag: float,
     
     return log_cholesky_prec
 
-def add_jitter(params: Dict, 
+def add_jitter(params: Dict,
+               jitter: float, 
                key: jax.random.PRNGKey) -> Dict[str, Dict[str, jax.Array]]:
     """
     Function to add jitter to the initial variational parameters.
 
     Args:
         params (Dict): The variational parameters in a nested dictionary.
+        jitter (float): The scale of the jitter that is added to initializations.
         key (jax.random.PRNGKey): A jax.random.PRNGKey
 
     Returns:
@@ -252,16 +255,16 @@ def add_jitter(params: Dict,
         variational parameters with additional noise.
     """
     
-    jitter = {}
+    jitter_store = {}
 
     for kw in params.keys():
-        jitter[kw] = {}
+        jitter_store[kw] = {}
         key, *subkeys = jax.random.split(key, 3)
         loc_dim = jnp.shape(params[kw]["loc"])
         scale_dim = jnp.shape(params[kw]["log_cholesky_prec"])
-        jitter[kw]["loc"] = tfjd.Normal(loc=0.0, scale=0.01).sample(sample_shape=loc_dim, seed=subkeys[0])
-        jitter[kw]["log_cholesky_prec"] = tfjd.Normal(loc=0.0, scale=0.01).sample(sample_shape=scale_dim, seed=subkeys[1])
+        jitter_store[kw]["loc"] = tfjd.Normal(loc=0.0, scale=jitter).sample(sample_shape=loc_dim, seed=subkeys[0])
+        jitter_store[kw]["log_cholesky_prec"] = tfjd.Normal(loc=0.0, scale=jitter).sample(sample_shape=scale_dim, seed=subkeys[1])
 
-    params_jitter = jax.tree_map(lambda x, j: x + j, params, jitter)
+    params_jitter = jax.tree_map(lambda x, j: x + j, params, jitter_store)
 
     return params_jitter    
