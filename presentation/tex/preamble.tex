@@ -23,16 +23,25 @@
 % For nice boxse (e.g. for important statements).
 \usepackage{tcolorbox}
 
-% Slide numbers and logo manually
-\usepackage{tabularx}
-\setbeamertemplate{footline}{
-    \color{fg}
-    \begin{tabularx}{\textwidth}{XX}
-    \insertframenumber/\inserttotalframenumber\hfill\phantom{.} &
-	\hfill\includegraphics[width=3cm, height=1cm]{assets/logo_uni_goe.pdf}
-    \\
-    \end{tabularx}
+% Only logo
+\logo{
+\includegraphics[width=3cm, height=1cm]{assets/logo_uni_goe.pdf}
 }
+
+% Slide numbers and logo manually
+%\usepackage{tabularx}
+%\setbeamertemplate{footline}{
+%    \color{fg}
+%    \begin{tabularx}{\textwidth}{XX}
+%    \insertframenumber/\inserttotalframenumber\hfill\phantom{.} &
+%	\hfill\includegraphics[width=3cm, height=1cm]{assets/logo_uni_goe.pdf}
+%    \\
+%    \end{tabularx}
+%}
+
+% Use adjsutbox/graphicx to fit table on the page
+\usepackage{adjustbox}
+\usepackage{graphicx}
 
 % emojies 
 \usepackage{hwemoji}
