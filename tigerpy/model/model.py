@@ -96,9 +96,13 @@ class Lpred:
     Linear predictor.
     """
 
-    def __init__(self, obs: Obs, function: Union[Callable, None]=None, **kwinputs: Any):
+    def __init__(self, obs: Obs, 
+                 function: Union[Callable, None]=None, 
+                 name: str ="",
+                 **kwinputs: Any):
         self.obs = obs
         self.function = function
+        self.name = name
         self.kwinputs = kwinputs
         self.design_matrix = jnp.asarray(self.obs.design_matrix, dtype=jnp.float32)
         self.params_values = self.update_params()
@@ -139,6 +143,27 @@ class Lpred:
 
         return transformed
 
+class Calc:
+    """
+    Calculations.
+    """
+
+    def __init__(self, function: Callable, **kwinputs: Any):
+        self.function = function
+        self.kwinputs = kwinputs
+        self.value = self.calc_value()
+    
+    def calc_value(self):
+        """
+        Method to calculate the values of a calculation node. 
+
+        Returns:
+            jax.Array: Values of the calculation node.
+        """
+        kwargs = {kw: item.value for kw, item in self.kwinputs.items()}
+        
+        return self.function(**kwargs)
+
 class Model:
     """
     Static model.
@@ -172,9 +197,15 @@ class Model:
         Returns:
             jax.Array: Log-prior of the model.
         """
+        prior_list, nodes = self.return_param_logpriors(self.response_dist)
+        unqiue_nodes = []
+        unique_prior_list = []
+        for prior, node in zip(prior_list, nodes):
+            if node not in unqiue_nodes:
+                unique_prior_list.append(prior)
+                unqiue_nodes.append(node)
 
-        prior_list = self.return_param_logpriors(self.response_dist)
-        log_prior = jnp.concatenate(prior_list)
+        log_prior = jnp.concatenate(unique_prior_list)
         
         return jnp.sum(log_prior)
 
@@ -201,20 +232,29 @@ class Model:
         """
 
         log_priors = []
-
+        nodes = []
+        
         if isinstance(obj, Param):
-            log_priors.append(obj.log_prior)
+            if obj.name not in nodes:
+                log_priors.append(obj.log_prior)
+                nodes.append(obj.name)
 
         if isinstance(obj, (list, tuple)):
             for item in obj:
-                log_priors.extend(self.return_param_logpriors(item))
+                prior, node = self.return_param_logpriors(item)
+                log_priors.extend(prior)
+                nodes.extend(node)
         elif isinstance(obj, dict):
             for value in obj.values():
-                log_priors.extend(self.return_param_logpriors(value))
+                prior, node = self.return_param_logpriors(value)
+                log_priors.extend(prior)
+                nodes.extend(node)
         elif hasattr(obj, "__dict__"):
-            log_priors.extend(self.return_param_logpriors(obj.__dict__))
+            prior, node = self.return_param_logpriors(obj.__dict__)
+            log_priors.extend(prior)
+            nodes.extend(node)
 
-        return log_priors
+        return log_priors, nodes
 
     def count_param_instances(self, obj: Any) -> int:
         """

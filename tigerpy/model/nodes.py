@@ -23,6 +23,7 @@ from .model import (
     Param,
     Dist,
     Obs,
+    Calc,
     Array,
     Distribution
 )
@@ -61,7 +62,7 @@ class ModelGraph:
 
         Args:
             name (str): Name of the node. Key of kwinputs.
-            param (Param): Initialization of class Param.
+            param (Param): Instance of class Param.
         """
 
         attr = {"value": param.value,
@@ -81,13 +82,29 @@ class ModelGraph:
 
         Args:
             name (str): Name of the linear predictor node.
-            lpred (Lpred): Initialization of class Lpred.
+            lpred (Lpred): Instance of class Lpred.
         """
 
         attr = {"value": lpred.value,
                  "bijector": lpred.function}
         self.digraph.add_node(name, attr=attr)
         self.digraph.nodes[name]["node_type"] = "lpred"
+        self.digraph.nodes[name]["input"] = {}
+
+    def add_calc_node(self, name: str, calc: Calc) -> None:
+        """
+        Method to add a calculation node (calc) node to the DAG. Calc nodes are 
+        nodes with a bijector function 
+
+        Args:
+            name (str): Name of the calculation node.
+            calc (Calc): Instance of class Calc
+        """
+
+        attr = {"value": calc.value,
+                "bijector": calc.function}
+        self.digraph.add_node(name, attr=attr)
+        self.digraph.nodes[name]["node_type"] = "calc"
         self.digraph.nodes[name]["input"] = {}
 
     def add_fixed_node(self, 
@@ -98,7 +115,7 @@ class ModelGraph:
 
         Args:
             name (str): Name of the fixed node.
-            obs (Obs): Initialization of class Obs.
+            obs (Obs): Instance of class Obs.
         """
 
         attr = {"value": jnp.asarray(obs.design_matrix, dtype=jnp.float32)}
@@ -111,7 +128,7 @@ class ModelGraph:
 
         Args:
             name (str): Name of the hyperparameter node.
-            hyper (Hyper): Initialization of class Hyper.
+            hyper (Hyper): Instance of class Hyper.
         """
 
         attr = {"value": hyper.value}
@@ -146,12 +163,12 @@ class ModelGraph:
 
     def init_update_traversal(self) -> None:
         """
-        Method to filter out all probabilistic and linear predictor nodes from the traversal order.
+        Method to filter out all probabilistic, linear predictor and calculation nodes from the traversal order.
         """
 
         for node in self.traversal_order:
             node_type = self.digraph.nodes[node]["node_type"]
-            if node_type in ["strong", "lpred", "root"]:
+            if node_type in ["strong", "lpred", "calc", "root"]:
                 self.update_traversal_order.append(node)
 
     def init_prob_traversal(self) -> None:
@@ -163,10 +180,30 @@ class ModelGraph:
             node_type = self.digraph.nodes[node]["node_type"]
             if node_type in ["strong", "root"]:
                 self.prob_traversal_order.append(node)
+    
+    def update_calc(self, 
+                    node: str, 
+                    attr:dict) -> jax.Array:
+        """
+        Method to calculate the value of a calculation node.
+
+        Args:
+            node (str): Name of the calculation node.
+            attr (dict): Attributes of the node.
+
+        Returns:
+            jax.Array: Values for the calculation node after applying the bijector (reparameterization function).
+        """
+        bijector = attr["bijector"]
+        input_pass = self.digraph.nodes[node]["input"]
+        # print(input_pass)
+        transformed = bijector(*input_pass.values())
+
+        return transformed
 
     def update_lpred(self, 
                      node: str, 
-                     attr: dict) -> Array:
+                     attr: dict) -> jax.Array:
         """
         Method to calculate the value of a linear predictor node.
 
@@ -270,7 +307,7 @@ class ModelGraph:
         of the DAG.
 
         Args:
-            obj (Any): Classes Hyper, Param and Lpred of tigerpy.model.model.
+            obj (Any): Classes Hyper, Param, Lpred and Calc of tigerpy.model.model.
             child_node (str): Name of the child node.
             param_name (str): Name of the current node/Parameter name in a distribution.
             params (dict): Dictionary that gets filled with the initial supplied
@@ -278,19 +315,38 @@ class ModelGraph:
         """
 
         if isinstance(obj, Lpred):
+            if child_node == "response":
+                node_name = param_name
+            else:
+                node_name = obj.name
+            if node_name not in self.digraph.nodes:
+                self.add_lpred_node(name=node_name, 
+                                    lpred=obj)
+                self.digraph.add_edge(node_name, 
+                                      child_node, 
+                                      role=param_name,
+                                      bijector=obj.function)
+                name_fixed = obj.obs.name
+                self.add_fixed_node(name=name_fixed, 
+                                    obs=obj.obs)
+                self.digraph.add_edge(name_fixed, 
+                                      node_name, 
+                                      role="fixed")
+                param_name = node_name
+            else: 
+                self.digraph.add_edge(node_name, 
+                                      child_node, 
+                                      role=param_name,
+                                      bijector=obj.function)
+                param_name = node_name
+        elif isinstance(obj, Calc):
             node_name = param_name
-            self.add_lpred_node(name=node_name, 
-                                lpred=obj)
+            self.add_calc_node(name=node_name, 
+                               calc=obj)
             self.digraph.add_edge(node_name, 
                                   child_node, 
-                                  role=param_name,
+                                  role=param_name, 
                                   bijector=obj.function)
-            name_fixed = obj.obs.name
-            self.add_fixed_node(name=name_fixed, 
-                                obs=obj.obs)
-            self.digraph.add_edge(name_fixed, 
-                                  node_name, 
-                                  role="fixed")
         elif isinstance(obj, Param):
             node_name = obj.name
             self.add_strong_node(name=node_name, 
@@ -342,43 +398,39 @@ class ModelGraph:
             node_type = self.digraph.nodes[node]["node_type"]
             attr = self.digraph.nodes[node]["attr"]
             childs = list(self.digraph.successors(node))
-
-            # Currently Graph structure only allows for one sucessor.
-            if childs:
-                # Select first successor and neglect all other
-                child = childs[0]
+        
 
             if node_type == "hyper":
                 input_pass = attr["value"]
-
-                edge = self.digraph.get_edge_data(node, child)
-                self.digraph.nodes[child]["input"][edge["role"]] = input_pass
-
+                for child in childs:
+                    edge = self.digraph.get_edge_data(node, child)
+                    self.digraph.nodes[child]["input"][edge["role"]] = input_pass
             elif node_type == "fixed":
                 input_pass = attr["value"]
-
-                edge = self.digraph.get_edge_data(node, child)
-                self.digraph.nodes[child]["input"][edge["role"]] = input_pass
-
+                for child in childs:
+                    edge = self.digraph.get_edge_data(node, child)
+                    self.digraph.nodes[child]["input"][edge["role"]] = input_pass
             elif node_type == "lpred":
                 attr["value"] = self.update_lpred(node, attr)
                 input_pass = attr["value"]
-
-                edge = self.digraph.get_edge_data(node, child)
-                self.digraph.nodes[child]["input"][edge["role"]] = input_pass
-
+                for child in childs:
+                    edge = self.digraph.get_edge_data(node, child)
+                    self.digraph.nodes[child]["input"][edge["role"]] = input_pass
+            elif node_type == "calc":
+                attr["value"] = self.update_calc(node, attr)
+                input_pass = attr["value"]
+                for child in childs:
+                    edge = self.digraph.get_edge_data(node, child)
+                    self.digraph.nodes[child]["input"][edge["role"]] = input_pass
             elif node_type == "strong":
                 attr["value"] = params[node]
-                
                 # Store to which parameter of the response the strong node belongs
                 param_response = self.response_param_member(node)
                 attr["param_response"] = param_response
-
                 for parent in self.digraph.predecessors(node):
                     if self.digraph.nodes[parent]["node_type"] not in ["hyper", "fixed"]:
                         self.digraph.nodes[node]["input_fixed"] = False
                         break
-
                 # If all inputs are fixed we need to initialize the probabiltiy distribution only onces.
                 if self.digraph.nodes[node]["input_fixed"]:
                     attr["dist"] = self.init_dist(dist=attr["dist"],
@@ -387,11 +439,10 @@ class ModelGraph:
                     init_dist = self.init_dist(dist=attr["dist"],
                                                params=self.digraph.nodes[node]["input"])
                     attr["log_prior"] = self.logprior(init_dist, attr["value"])
-
                 input_pass = attr["value"]
-                edge = self.digraph.get_edge_data(node, child)
-                self.digraph.nodes[child]["input"][edge["role"]] = input_pass
-
+                for child in childs:
+                    edge = self.digraph.get_edge_data(node, child)
+                    self.digraph.nodes[child]["input"][edge["role"]] = input_pass
             elif node_type == "root":
                 init_dist = self.init_dist(attr["dist"], self.digraph.nodes[node]["input"])
                 attr["log_lik"] = self.loglik(init_dist, attr["value"])
@@ -415,8 +466,9 @@ class ModelGraph:
 
         # Obtain the traversal order for the initialization of the graph
         self.init_traversal()
-
-        # Obtain the traversal order to update the Graph i.e. for all probabilistic nodes and linear predictor nodes
+        
+        # Obtain the traversal order to update the Graph i.e. for all probabilistic nodes, linear predictor
+        # and calculation nodes
         self.init_update_traversal()
 
         # Obtain the traversal order for all probabilistic nodes
@@ -483,10 +535,9 @@ class ModelGraph:
             "weak": ""
         }
 
-        def calculate_font_size(graph):
+        def calculate_font_size(graph, base_font_size = 12):
             num_nodes = len(graph.nodes)
-            base_font_size = 12  # Initial font size
-            scaling_factor = 0.25  # Adjust this factor based on your preference
+            scaling_factor = 0.25 
             return round(base_font_size - scaling_factor * num_nodes)
         
         def calculate_node_size(graph):
@@ -527,8 +578,8 @@ class ModelGraph:
         edge_labels = nx.get_edge_attributes(self.digraph, "bijector")
 
         for key, value in edge_labels.items():
-            if value is not None:
-                string_to_search = str(edge_labels[key])
+            if value is not None and "jax" in str(value):
+                string_to_search = str(value)
                 pattern = r"jax\.numpy\.(\w+)"
                 match_pattern = re.search(pattern, string_to_search)
                 edge_labels[key] = match_pattern.group()
@@ -539,7 +590,7 @@ class ModelGraph:
                                      pos, 
                                      edge_labels=edge_labels, 
                                      ax=ax, 
-                                     font_size=8)
+                                     font_size=calculate_font_size(self.digraph, base_font_size=8))
 
         if savepath is not None:
             plt.savefig(savepath)

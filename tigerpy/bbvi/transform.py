@@ -5,39 +5,13 @@ Transformation functions.
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import jacfwd, vmap
-
-from typing import (
-    Any
-)
-
-Array = Any
-
-# Define the log transformation function
-def log_transform(x):
-    return jnp.log(x)
-
-# Define the exp transformation function
-def exp_transform(x):
-    return jnp.exp(x)
-
-# Define a function to compute the determinant of the Jacobian
-def jac_determinant(f, x):
-    jacobian = jacfwd(f)(x)
-    return jnp.linalg.det(jacobian)
-
-# create a batched version to calculate the determinant of the Jacobian
-batched_jac_determinant = vmap(jac_determinant, (None, 0))
-
-# Note: while being general this is not efficient for complicated Jacobians
-# Leave it for the moment at this implementation
 
 # function to calculate the hessian of a function
 def hessian(f, argnums):
   return jax.jacfwd(jax.grad(f, argnums=argnums), argnums=argnums)
 
 # Use the unique definition of the Cholesky decomposition
-def fill_lower_diag(log_vec_L: Array, d: int) -> Array:
+def fill_lower_diag(log_vec_L: jax.Array, d: int) -> jax.Array:
     """
     Given a vector which parametrize a lower-traingular matrix, 
     reconstructs the matrix where the entries of the input vector
@@ -49,7 +23,7 @@ def fill_lower_diag(log_vec_L: Array, d: int) -> Array:
 
     return out.at[mask].set(log_vec_L)
 
-def log_cholesky_parametrization(L: Array, d: int) -> Array:
+def log_cholesky_parametrization(L: jax.Array, d: int) -> jax.Array:
     """
     Parametrize a lower-diagonal matrix through a vector with the
     elements in row-column order. The elements in the diagonal are
@@ -67,7 +41,7 @@ def log_cholesky_parametrization(L: Array, d: int) -> Array:
 
     return log_vec_L[jnp.tril_indices(d)]
 
-def log_cholesky_parametrization_to_tril(log_vec_L: Array, d: int) -> Array:
+def log_cholesky_parametrization_to_tril(log_vec_L: jax.Array, d: int) -> jax.Array:
     """
     Given a vector representing the log-cholesky parametrization,
     reconstructs the lower triangular matrix of the the cholesky

@@ -34,6 +34,21 @@ from .transform import (
     log_cholesky_parametrization_to_tril
 )
 
+def calc_calc(bijector: Callable, 
+              params: Dict) -> jax.Array:
+    """
+    Method to calculate the values for a calc node.
+
+    Args:
+        bijector (Callable): Function that reparameterizes the parameters of the response
+        in terms of location, scale and shape.
+        params (Dict): The location, scale and shape paramters (linear predictor nodes).
+
+    Returns:
+        jax.Array: The value of the response distribution parameter
+    """
+    return bijector(**params)
+
 def calc_lpred(design_matrix: jax.Array, 
                params: Dict,
                bijector: Callable) -> jax.Array:
@@ -153,3 +168,12 @@ def gen_noise(var_params,
                                              shape= var_params[kw]["loc"].shape,
                                              S=num_var_samples)
     return samples_noise
+
+def calc_constr_params(params_unconstr, 
+                       attr) -> jax.Array:
+    if attr["param_space"] is None:
+        params_constr = params_unconstr
+    elif attr["param_space"] == "positive":
+        params_constr = jnp.exp(params_unconstr)
+
+    return params_constr

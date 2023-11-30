@@ -53,8 +53,10 @@ from .init_bbvi import (
 )
 
 from .calc import(
+    calc_calc,
     calc_lpred,
     calc_scaled_loglik,
+    calc_constr_params,
     init_dist,
     logprior,
     loglik,
@@ -64,17 +66,15 @@ from .calc import(
 )
 
 class MapState(NamedTuple):
-    data_train: dict
-    data_val: dict
+    data: dict
     batches: list
-    num_obs_train: int
-    num_obs_val: int 
+    num_obs: int 
     lprob_best: jax.Array
     params_best: dict
     opt_state: Any
     params: dict
-    lprob_train: jax.Array
-    lprob_val: jax.Array
+    lprobs_batch: jax.Array
+    lprobs_full: jax.Array
     it: int
 
 class BbviState(NamedTuple):
@@ -178,6 +178,101 @@ class Bbvi:
         
         self.num_var_params = num_params
 
+    def logprob(self, 
+                model_params_uncostr: Dict, 
+                data: Dict, 
+                num_obs: int) -> jax.Array:
+        """
+        Calculate the joint log-probability of the model, for the parameters of the model in the 
+        unconstrained space.
+
+        Args:
+            model_params_unconstr (Dict): The parameters of the model in the unconstrained space.
+            data (Dict): A subsample of the data.
+            num_obs (int): Number of observations in the model.
+
+        Returns:
+            jax.Array: The noisey log-probability of the model. We only use a subsample 
+            of the data.
+        """
+
+        # Safe intermediary computations in the model_state
+        model_state = {}
+        # Safe all log priors 
+        log_priors = jnp.array([0.0])
+        # Acess global variables but don't modify them 
+        for node in self.graph.update_traversal_order:
+            node_type = self.digraph.nodes[node]["node_type"]
+            attr = self.digraph.nodes[node]["attr"]
+            childs = list(self.digraph.successors(node))
+            parents = list(self.digraph.predecessors(node))
+            # Linear predictor node 
+            if node_type == "lpred":
+                for parent in parents:
+                    edge = self.digraph.get_edge_data(parent, node)
+                    if edge["role"] == "fixed":
+                        design_matrix = data[parent]
+                        parents.remove(parent)
+                # Obtain all parameters of the linear predictor node must be defined in the 
+                # right order 
+                params = {kw: calc_constr_params(model_params_uncostr[kw], self.digraph.nodes[kw]["attr"]) for kw in parents}
+
+                # Calculate the linear predictor with the new samples
+                lpred_val = calc_lpred(design_matrix, 
+                                       params,
+                                       attr["bijector"])
+                model_state[node] = lpred_val 
+            # Calc node 
+            elif node_type == "calc":
+                params = {}
+                for parent in parents:
+                    edge = self.digraph.get_edge_data(parent, node)
+                    params[edge["role"]] = model_state[parent]
+                calc_val = calc_calc(attr["bijector"], 
+                                     params)
+                model_state[node] = calc_val    
+            # Strong node          
+            elif node_type == "strong":
+                model_param_constr = calc_constr_params(model_params_uncostr[node], attr)
+                if self.digraph.nodes[node]["input_fixed"]:
+                    log_prior = logprior(attr["dist"], 
+                                         model_param_constr)
+                else: 
+                    # Combine fixed hyperparameter with parameter that is stochastic
+                    params = {}
+                    for parent in parents:
+                        if self.digraph.nodes[parent]["node_type"] == "hyper":
+                            edge = self.digraph.get_edge_data(parent, node)
+                            params[edge["role"]] = self.digraph.nodes[parent]["attr"]["value"]
+                        elif self.digraph.nodes[parent]["node_type"] == "strong":
+                            edge = self.digraph.get_edge_data(parent, node)
+                            params[edge["role"]] = model_state[parent]
+                    dist = init_dist(dist=attr["dist"], 
+                                     params=params)
+                    log_prior = logprior(dist, 
+                                         model_param_constr)
+                # Sum log-priors of a strong node
+                if log_prior.ndim == 2:
+                    log_prior = jnp.sum(log_prior, axis=-1)
+                log_priors += log_prior
+                model_state[node] = model_param_constr
+            # Root node 
+            elif node_type == "root":
+                params = {}
+                for parent in parents:
+                    edge = self.digraph.get_edge_data(parent, node)
+                    params[edge["role"]] = model_state[parent]
+                dist = init_dist(dist=attr["dist"],
+                                 params=params)
+                # Calculate the log_lik
+                log_lik = loglik(dist, 
+                                 data[node])
+                # calculate the scaled log-likelihood
+                scaled_log_lik = calc_scaled_loglik(log_lik,
+                                                    num_obs)
+
+        return - jnp.sum(scaled_log_lik + log_priors)
+
     def mc_logprob(self, 
                    samples: Dict,
                    data: Dict,
@@ -196,8 +291,6 @@ class Bbvi:
         # Safe intermediary computations in the model_state
         model_state = {}
         # Safe all log priors 
-        # Maybe explicity define shape log-priors via num_var_samples
-        # However gets recasted correctly 
         log_priors = jnp.array([0.0])
         # Acess global variables but don't modify them 
         for node in self.graph.update_traversal_order:
@@ -221,6 +314,15 @@ class Bbvi:
                                        params,
                                        attr["bijector"])
                 model_state[node] = lpred_val   
+            # Calc node 
+            elif node_type == "calc":
+                params = {}
+                for parent in parents:
+                    edge = self.digraph.get_edge_data(parent, node)
+                    params[edge["role"]] = model_state[parent]
+                calc_val = calc_calc(attr["bijector"], 
+                                     params)
+                model_state[node] = calc_val   
             # Strong node          
             elif node_type == "strong":
                 if self.digraph.nodes[node]["input_fixed"]:
@@ -251,27 +353,16 @@ class Bbvi:
                 for parent in parents:
                         edge = self.digraph.get_edge_data(parent, node)
                         params[edge["role"]] = model_state[parent]
-                # Comments here refer to instability of location-scale-shape regression
-                # replace the scale coefficients just with a one 
-                # print("Scale-mean", params["scale"], params["scale"].shape)
-                # print("Scale-mean over batches", jnp.mean(params["scale"], axis=0), jnp.mean(params["scale"], axis=0).shape)
-
                 # Write function that initializes the dist with new values
                 dist = init_dist(dist=attr["dist"],
                                  params=params)
-                # print("Response dist:", init_dist)
                 # Calculate the log_lik
                 log_lik = loglik(dist, 
                                  data[node])
-                # print("Log-lik:", log_lik, log_lik.shape)
-                # print("Mean log-lik", jnp.mean(log_lik, axis=-1), jnp.mean(log_lik, axis=-1).shape)
-                # print("Scaled log-lik", num_obs * jnp.mean(log_lik, axis=-1), jnp.mean(log_lik, axis=-1).shape)
                 # calculate the scaled log-likelihood
                 scaled_log_lik = calc_scaled_loglik(log_lik,
                                                     num_obs)
 
-        # print("Scaled log-lik", jnp.mean(scaled_log_lik), jnp.mean(scaled_log_lik).shape)
-        # print("Log-priors", jnp.mean(log_priors), jnp.mean(log_priors).shape)
         return jnp.mean(scaled_log_lik + log_priors)
 
     # Update docstrings
@@ -298,9 +389,6 @@ class Bbvi:
                                                                     kw)
                 total_neg_entropy = jnp.append(total_neg_entropy, neg_entropy, axis=0)
 
-        # print(samples["tau2"], samples["eta2"])
-        # print(total_neg_entropy)
-
         mc_log_prob = self.mc_logprob(samples_params, 
                                       data, 
                                       num_obs)
@@ -312,9 +400,10 @@ class Bbvi:
     def run_bbvi(self,
                  key: jax.random.PRNGKey,
                  learning_rate: Union[Any, float]=1e-3,
-                 pre_train_learning_rate: float=1e-2,
+                 pre_train_learning_rate: float=1e-3,
                  grad_clip: float=1,
-                 threshold: float=1e-2,
+                 threshold: float=0.1,
+                 pre_train_threshold: float=0.1,
                  batch_size: int=64,
                  pre_train_batch_size: int=64,
                  train_share: float=0.8,
@@ -335,97 +424,115 @@ class Bbvi:
             optimizer = optax.clip(optax.clip(grad_clip), 
                                    optax.adamw(learning_rate=learning_rate))
             
-        def set_init_map(data_train: dict,
-                         data_val: dict,
+        def set_init_map(data: dict,
                          init_var_params: dict, 
-                         pre_train_batch_size: int,
                          pre_train_learning_rate: int,
                          grad_clip: float,
+                         pre_train_threshold: float,
+                         pre_train_batch_size: int,
                          key: jax.Array) -> Dict:
             init_params = {kw: value["loc"] for kw, value in init_var_params.items()}
-            num_obs_train = data_train["response"].shape[0]
-            num_obs_val = data_val["response"].shape[0]
-            log_prob = self.mc_logprob(init_params, 
-                                       data_val,  
-                                       num_obs_val)
+            num_obs = data["response"].shape[0]
+            log_prob = self.logprob(init_params, 
+                                    data, 
+                                    num_obs)
             optimizer = optax.chain(optax.clip(grad_clip), 
                                     optax.adam(learning_rate=pre_train_learning_rate))
             opt_state = optimizer.init(init_params)
             log_probs = jnp.array([log_prob])
 
-            # incluce batches into MapState
-            map_state = MapState(data_train, 
-                                 data_val, 
-                                 num_obs_train,
-                                 num_obs_val, 
+            # Create starting batch list 
+            key, *subkeys = jax.random.split(key, 3)
+
+            # Split data into pre_train_batches 
+            train_idx = jax.random.permutation(subkeys[0], num_obs)
+            num_batches = num_obs // pre_train_batch_size 
+            lost_obs = num_obs % pre_train_batch_size
+            if lost_obs > 0:
+                add_idx = jax.random.choice(subkeys[1], train_idx[:-lost_obs], (pre_train_batch_size-lost_obs,), replace=False)
+                train_idx = jnp.append(train_idx, add_idx) 
+                batches = jnp.split(train_idx, (num_batches+1))
+            else:
+                batches = jnp.split(train_idx, num_batches)
+                
+            map_state = MapState(data, 
+                                 batches,
+                                 num_obs,
                                  jnp.array(-jnp.inf),
                                  init_params, 
                                  opt_state, 
                                  init_params,
-                                 jnp.zeros(pre_train_batch_size), 
-                                 jnp.zeros(pre_train_batch_size), 
+                                 jnp.zeros(len(batches)),
+                                 jnp.zeros(len(batches)), 
                                  0)
             
             delta = jnp.inf
-            while abs(delta) > 0.5:
+            j = 1
+            while abs(delta) > pre_train_threshold:
                 key, *subkeys = jax.random.split(key, 3)
 
-                # Split data into train batches 
-                train_idx = jax.random.permutation(subkeys[0], num_obs_train)
-                # Note: batch_size is a global variable
-                num_batches = num_obs_train // pre_train_batch_size 
-                lost_obs = num_obs_train % pre_train_batch_size
+                # Split data into pre_train_batches 
+                train_idx = jax.random.permutation(subkeys[0], num_obs)
+                num_batches = num_obs // pre_train_batch_size 
+                lost_obs = num_obs % pre_train_batch_size
                 if lost_obs > 0:
                     add_idx = jax.random.choice(subkeys[1], train_idx[:-lost_obs], (pre_train_batch_size-lost_obs,), replace=False)
-                    train_idx = jnp.append(train_idx, add_idx) 
+                    train_idx = jnp.append(train_idx, add_idx)
+                    
                     batches = jnp.split(train_idx, (num_batches+1))
                 else:
                     batches = jnp.split(train_idx, num_batches)
+                map_state = map_state._replace(batches=batches, 
+                                               lprobs_batch=jnp.zeros(len(batches)),
+                                               lprobs_full=jnp.zeros(len(batches)),
+                                               it=0)
 
                 map_state = jax.lax.fori_loop(0, 
                                               len(batches), 
                                               map_body, 
                                               map_state)
+                # print("Log-prob:", map_state.lprob_best)
+                # print("Vec-log-probs:", map_state.lprobs_full)
                 log_probs = jnp.append(log_probs, map_state.lprob_best)
-                delta = log_probs[map_state.it] - log_probs[map_state.it - 1]
-                print(abs(delta))
-                
-            print("Best log-prob:", map_state.lprob_best)
-            print("Parameters:", map_state.params_best)
+               
+                delta =  map_state.lprobs_full[-1] -  map_state.lprobs_full[-2]
+                # print("Delta:", abs(delta))
+                j += 1
+            # print("params best:", map_state.params_best)
+            # print("Lprob-best:", map_state.lprob_best)
+            H = hessian(self.logprob, argnums=0)(map_state.params_best, 
+                                                 map_state.data, 
+                                                 map_state.num_obs)
 
-            # Get the MAP parameters 
-            init_var_params = {}
+            # Get the MAP parameters
             for kw, value in map_state.params_best.items():
                 init_var_params[kw]["loc"] = value
-                H = hessian(self.mc_logprob, argnums=0)(map_state.params_best, 
-                                                        map_state.data_val, 
-                                                        map_state.num_obs_val)
-                L = jnp.linalg.cholesky(H)
+                L = jnp.linalg.cholesky(H[kw][kw])
                 init_var_params[kw]["log_cholesky_prec"] = log_cholesky_parametrization(L, d=L.shape[0])
-                
+
             return init_var_params
         
         def map_body(idx, map_state):
             funcs = [lambda i=i: map_state.batches[i] for i in range(len(map_state.batches))]
             batch_idx = jax.lax.switch(idx, funcs)
-            batch_data = jax.tree_map(lambda x: x[batch_idx], map_state.data_train)
-            lprob_grad_value = jax.value_and_grad(self.mc_logprob)
-            lprob_train, grad = lprob_grad_value(map_state.params,
+            batch_data = jax.tree_map(lambda x: x[batch_idx], map_state.data)
+            lprob_grad_value = jax.value_and_grad(self.logprob)
+            lprob_batch, grad = lprob_grad_value(map_state.params,
                                                  batch_data,
-                                                 map_state.num_obs_train)
-            neg_grad = jax.tree_map(lambda x: x*(-1), grad)
-            updates, opt_state = optimizer.update(neg_grad, 
+                                                 map_state.num_obs)
+
+            updates, opt_state = optimizer.update(grad, 
                                                   map_state.opt_state, 
                                                   map_state.params)
             params_new = optax.apply_updates(map_state.params,
                                              updates)
+
+            lprob_val = self.logprob(params_new, 
+                                     map_state.data, 
+                                     map_state.num_obs)
             
-            lprob_val = self.mc_logprob(params_new, 
-                                         data_val, 
-                                         map_state.num_obs_val)
-            
-            lprob_train = map_state.lprob_train.at[map_state.it].set(lprob_train)
-            lprob_val = map_state.lprob_val.at[map_state.it].set(lprob_val)
+            lprobs_batch = map_state.lprobs_batch.at[map_state.it].set(-lprob_batch)
+            lprobs_full = map_state.lprobs_full.at[map_state.it].set(-lprob_val)
 
             # Choose max logprob here and pass to MapState 
             def true_fn(params, lprob, params_best, lprob_best):
@@ -438,19 +545,18 @@ class Bbvi:
                                                   true_fn,
                                                   false_fn,
                                                   map_state.params,
-                                                  lprob_val,
+                                                  -lprob_val,
                                                   map_state.params_best, 
                                                   map_state.lprob_best)
-            return MapState(map_state.data_train, 
-                            map_state.data_val, 
-                            map_state.num_obs_train, 
-                            map_state.num_obs_val, 
+            return MapState(map_state.data, 
+                            map_state.batches,
+                            map_state.num_obs, 
                             lprob_best, 
                             params_best, 
                             opt_state, 
                             params_new, 
-                            lprob_train, 
-                            lprob_val, 
+                            lprobs_batch, 
+                            lprobs_full,
                             map_state.it + 1)
         
         def bbvi_body(idx, bbvi_state):
@@ -599,16 +705,16 @@ class Bbvi:
         if self.pre_train:
             key, subkey = jax.random.split(key)
             if self.verbose:
-                print("Start pre training ...")
-            self.init_var_params = set_init_map(data_train,
-                                                data_val,
+                print("Start pre-training ...")
+            self.init_var_params = set_init_map(self.data,
                                                 self.init_var_params, 
-                                                pre_train_batch_size,
                                                 pre_train_learning_rate,
                                                 grad_clip,
+                                                pre_train_threshold,
+                                                pre_train_batch_size,
                                                 subkey)
             if self.verbose:
-                print("Finished pre training")
+                print("Finished pre-training")
 
         if self.jitter_init:
             key, subkey = jax.random.split(key)
