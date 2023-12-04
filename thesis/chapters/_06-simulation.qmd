@@ -8,7 +8,7 @@ Simulation studies serve as a vital tool for statisticians, allowing for the eva
 
 ## Consistency study {#sec-cons-study}
 
-Frequentist inference emphasizes the significance of consistency as a key property of an estimator. Although working within a Bayesian framework, there persists an interest in investigating the asymptotic behavior of the posterior mean. The Bernstein-von Mises theorem assures us that as $n_{\text{obs}}$ approaches infinity, the posterior distribution (for global parameters) approximates a normal distribution around the posterior mean. This theorem acts as a bridge between frequentist and Bayesian inference methodologies. Hence in our first simulation study we use the posterior means of BBVI as point estimates and asses their asymptotics in terms of bias and empirical standard error (EmpSE) over different samples sizes and regression models. The aim of this study is two fold. First we try to shed light on the asymptotics of the posterior means from BBVI over small as well as larger sample sizes. Furthermore, several authors have previously illustrated that VI yields consistent parameter estimates, as $n_{\text{obs}}$ approaches infinity, when considering the posterior means as point estimates [@You2014; @Neville2014]. Hence, we can rely on the behavior exhibited in large sample sizes as an indicator of whether the implementation functions as anticipated.
+Frequentist inference emphasizes the significance of consistency as a key property of an estimator. Although working within a Bayesian framework, there persists an interest in investigating the asymptotic behavior of the posterior mean. The Bernstein-von Mises theorem [@Vaart2000, chap. 10.2] assures us that as $n_{\text{obs}}$ approaches infinity, the posterior distribution (for global parameters) approximates a normal distribution around the posterior mean. This theorem acts as a bridge between frequentist and Bayesian inference. Hence in our first simulation study we use the posterior means of BBVI as point estimates and asses their asymptotics in terms of bias and empirical standard error (EmpSE) over different samples sizes and regression models. The objectives of this study are multifaceted. First, we try to shed light on the asymptotics of the posterior means from BBVI over small as well as larger sample sizes. Furthermore, several authors have previously illustrated that VI yields consistent parameter estimates, as $n_{\text{obs}}$ approaches infinity, when considering the posterior means as point estimates [@You2014; @Neville2014]. Hence, we can rely on the behavior exhibited in large sample sizes as an indicator of whether the implementation functions as anticipated. Lastly, we also conducted the simulation study with MCMC to asses the relative performance of BBVI. This might enable us to identify circumstances where the application of BBVI is safe and reliable, especially concerning the sample size.
 
 We will conduct this study for two well known models being the Bayesian linear regression model ($M_{1}$) and the Bayesian logistic regression model ($M_{2}$) (see @sec-binf). For the data-generating mechanism we generate pseudo-random data for one covariate from a uniform distribution, parameterized by its minimum and maximum value. In detail we use $x \sim \mathcal{U}(-3,3)$. After that we genetrate the data for the linear predictors by applying the corresponding parametric functions on the random covariate vector. Finally we obtain samples from the response distribution. For $M_{1}$, this involves sampling noise from a zero-mean normal distribution, parameterized by its scale with $\sigma = 1$, resulting in $\epsilon \sim \mathcal{N}(0,1)$, and adding this noise to the location. On the other hand, for $M_{2}$, we utilize the logit link function to directly sample from a Bernoulli distribution. We employ the following parametric functions for the study:
 
@@ -25,29 +25,29 @@ The parameterizations for the corresponding functions are given in Table \ref{tb
         & $\betavec$ \\
         \midrule
         Linear & $[1.0, 2.0]^{\mathrm{T}}$ \\
-        Quadratic & $[3.0, 0.2, -0.5]^{\mathrm{T}}$ \\
+        Quadratic & $[3.0, 0.2, -0.5]^{\mathrm{T}}$. \\
         \bottomrule
     \end{tabular}
 \label{tbl-1}
 \end{table}
 
-We use the quadratic function for the location of $M_{1}$ and the linear function for the log-odds of $M_{2}$. The choice for the parameterization of the quadratic function was based on assessing plots. Furthermore, the parameterization of the linear function was chosen to achieve a relatively balanced binary response vector for $M_{2}$, where with the current parameterization we obtain $\frac{1}{n_{\text{obs}}}\sum_{i}^{n_{\text{obs}}}y_{i} \approx 0.58$. To asses the convergence over varying samples sizes $n_{\text{obs}}$ we decide for the following five samples sizes: 50, 100, 500, 1000, 5000. This allows us to study the small sample size behavior as well as large sample asymptotics of the method.
+We use the quadratic function for the location of $M_{1}$ and the linear function for the log-odds of $M_{2}$. The choice for the parameterization of the quadratic function was based on assessing plots. Furthermore, the parameterization of the linear function was chosen to achieve a relatively balanced binary response vector for $M_{2}$, where we obtain with the current parameterization $\frac{1}{n_{\text{obs}}}\sum_{i}^{n_{\text{obs}}}y_{i} \approx 0.58$. To asses the convergence over varying samples sizes $n_{\text{obs}}$ we decide for the following five samples sizes: 50, 100, 500, 1000, 5000. This allows us to study the small sample size behavior as well as large sample asymptotics of the method.
 
-Our Estimands in this study are the fixed known coefficients in Table \ref{tbl-1} and additionally $\sigma = 1$ for $M_{1}$. The method under investigation is the BBVI algorithm (see Alogrithm \ref{algo}). We use an "arbitrary" initialization of the variational parameters and set $\muvec_{j} = \zerovec$ for all coefficients in the linear predictor and $\muvec_{j} = \ln(10)$ for the scale ($\sigma$). For the precision we use $\diag(\Lbold_{j}) = 2$ for the scale and $\diag(\Lbold_{j}) = \onevec$ else. Additionally we use a batch-size of 36, 80% of the data for training, 64 samples from the variational distribution, a max epoch size of 250 and a learning rate of 1e-2. Initial investigations showed that using 250 epochs yielded converging ELBOs also for the smaller sample sizes. Furthermore we also use a new seed for each BBVI run as well as for the data-generating mechanism.
+Our Estimands in this study are the fixed known coefficients in Table \ref{tbl-1} and additionally $\sigma = 1$ for $M_{1}$. The method under investigation is the BBVI algorithm (see Alogrithm \ref{algo}) implemented in `tigerpy`. Furthermore, for evaluating the comparative performance, we employ the No U-turn sampler (NUTS) within MCMC, for all model parameters, in the software package `liesel` [@Riebl2022]. We use an "arbitrary" initialization of the variational parameters and set $\muvec_{j} = \zerovec$ for all coefficients in the linear predictor and $\muvec_{j} = \ln(10)$ for the scale ($\sigma$). For the precision we use $\diag(\Lbold_{j}) = 2$ for the scale and $\diag(\Lbold_{j}) = \onevec$ else. Additionally we use a batch-size of 36, 80% of the data for training, 64 samples from the variational distribution, a max epoch size of 250 and a learning rate of 1e-2. Initial investigations showed that using 250 epochs yielded converging ELBOs also for the smaller sample sizes. Furthermore we also use a new seed for each BBVI run as well as for the data-generating mechanism. For MCMC we decide to use a burn-in of 1000 samples and then obtain 1000 samples from the Markov chain. 
 
-In this context, our performance measures^[See @Morris2019 [p. 2086, Table 6] for a definition of common performance measures, including those that we used.] include bias, empirical standard error (EmpSE). Setting an appropriate number of simulation repetitions $n_{\text{sim}}$ in simulation studies is crucial. We aim for Monte Carlo SEs to be less than 0.1, initial investigations show that this is already the case for $n_{\text{sim}}=100$, thus we conservatively use $n_{\text{sim}}=200$. The simulation study yielded an outcome without any errors or missing estimators.
+In this context, our performance measures^[See @Morris2019 [p. 2086, Table 6] for a definition of common performance measures, including those that we used.] include bias, empirical standard error (EmpSE). Setting an appropriate number of simulation repetitions $n_{\text{sim}}$ in simulation studies is crucial. We aim for Monte Carlo SEs to be less than 0.1, initial investigations show that this is already the case for $n_{\text{sim}}=100$, thus we conservatively use $n_{\text{sim}}=200$. The simulation study yielded an outcome without any errors or missing estimators. All result for BBVI are included in this Section, while the results for MCMC are included in [Appendix @sec-mcmc-cons].
 
-Kernel density plots depicting the posterior means for the parameters of $M_{1}$ can be found in @fig-kdeplot-loc and @fig-kdeplot-scale. Notably, for small sample sizes, a considerable variation is evident in our estimations. Additionally, the distributions for $\beta_{0}$ and $\beta_{2}$ do not center around their true estimands. Nevertheless, as the sample sizes increase, a convergence to the true estimands becomes apparent. Specifically, after a sample size of 500, our estimators appear to be closely distributed around the true value. In the kernel density estimates of the scale $\sigma$, shown in @fig-kdeplot-scale, we observe a large spread for low sample sizes. We even observe some outliers on the right tail. Furthermore the distributions appear to be right skewed for low sample sizes. Again after a sample size of 500 we observe a close alignment around the true estimand.
+Kernel density plots depicting the posterior means for the parameters of $M_{1}$ can be found in @fig-kdeplot-loc and @fig-kdeplot-scale. Notably, for small sample sizes, a considerable variation is evident in our estimations. Additionally, the distributions for $\beta_{0}$ and $\beta_{2}$ do not center around their true estimands. Nevertheless, as the sample sizes increase, a convergence to the true estimands becomes apparent. Specifically, after a sample size of 500, our estimators appear to be closely distributed around the true value. In the kernel density estimates of the scale $\sigma$, shown in @fig-kdeplot-scale, we observe a large spread for low sample sizes. Furthermore, the distributions appears to be prominently right skewed for low sample sizes. Again, after a sample size of 500 we observe a close alignment around the true estimand.
 
 ![Kernel density for the posterior means of the location parameters of $M_{1}$, true parameters given by $\betavec = [3.0, 0.2, -0.5]^{\mathrm{T}}$ (grey dashed line).](assets/plots/plot8.pdf){width=80% fig-scap="Kernel density for the location parameters of $M_{1}$." #fig-kdeplot-loc}
 
 ![Kernel density for the posterior means of the scale parameter of $M_{1}$, true parameter given by $\sigma=1.0$ (grey dashed line).](assets/plots/plot9.pdf){width=80% fig-scap="Kernel density for the scale parameter of $M_{1}$." #fig-kdeplot-scale}
 
-Ideally, we would anticipate observing zero bias across various $n_{\text{obs}}$ sizes, accompanied by a reduction in EmpSE for growing $n_{\text{obs}}$ for our performance measure. Table \ref{tbl-2} depicts the performance measures for the parameters of $M_{1}$. Interestingly especially for smaller sample sizes we observe a sizeable bias for $\beta_{0}$ and $\sigma$, but the bias vanishes for growing samples sizes. Eventhough the bias for $\beta_{2}$ is small in size the respective 95\% confidence intervals (CI) do not cover 0 for $n_{\text{obs}}\leq 1000$. For the EmpSE we observe again rahter large values for $\beta_{0}$ and $\sigma$. However all EmpSEs shrink for growing sample sizes.
+Ideally, we would anticipate observing zero bias across various $n_{\text{obs}}$ sizes, accompanied by a reduction in EmpSE for growing $n_{\text{obs}}$ for our performance measure. Table \ref{tbl-2} depicts the performance measures for the parameters of $M_{1}$. Interestingly especially for smaller sample sizes we observe a sizeable bias for $\beta_{0}$ and $\sigma$, but the bias vanishes in size for growing samples sizes. Notably we still observe a significant bias for $\sigma$ with $n_{\text{obs}}=5000$. Eventhough the bias for $\beta_{2}$ is small in size the respective 95\% confidence intervals (CI)s do not cover 0 for $n_{\text{obs}}\leq 1000$. For the EmpSE we observe rather large values for $\beta_{0}$ and $\sigma$. However all EmpSEs shrink for growing sample sizes.
 
 \begin{table}[htbp]
 \centering
-\caption{Simulation results for the parameters of $M_{1}$.}
+\caption{Simulation results for the parameters of $M_{1}$, using BBVI.}
 \resizebox{\textwidth}{!}{%
 \begin{threeparttable}
     \begin{tabular}{lrrrrrrrrrr}
@@ -57,14 +57,14 @@ Ideally, we would anticipate observing zero bias across various $n_{\text{obs}}$
         \cmidrule(lr){7-11} 
         $n_{\text{obs}}$ & 50 & 100 & 500 & 1000 & 5000 & 50 & 100 & 500 & 1000 & 5000 \\
         \midrule
-        $\beta_{0}$ & \textbf{-0.4819} & \textbf{-0.2319} & \textbf{-0.0520} & \textbf{-0.0162} & 0.0002 & 0.4563 & 0.3046 & 0.1036 & 0.0640 & 0.0344 \\[-4pt]
-         & {\tiny(0.0323)} & {\tiny(0.0215)} & {\tiny(0.0073)} & {\tiny(0.0045)} & {\tiny(0.0024)} & {\tiny(0.0229)} & {\tiny(0.0153)} & {\tiny(0.0052)} & {\tiny(0.0032)} & {\tiny(0.0017)} \\
-        $\beta_{1}$ & 0.0113 & 0.0016 & 0.0003 & 0.0021 & -0.0007 & 0.0996 & 0.0598 & 0.0300 & 0.0237 & 0.0166 \\[-4pt]
-        & {\tiny(0.0070)} & {\tiny(0.0042)} & {\tiny(0.0021)} & {\tiny(0.0017)} & {\tiny(0.0012)} & {\tiny(0.0050)} & {\tiny(0.0030)} & {\tiny(0.0015)} & {\tiny(0.0012)} & {\tiny(0.0008)}\\
-        $\beta_{2}$ & \textbf{0.0972} & \textbf{0.0428} & \textbf{0.0095} & \textbf{0.0033} & -0.0002  & 0.0975 & 0.0614 & 0.0264 & 0.0176 & 0.0104 \\[-4pt]
-        & {\tiny(0.0069)} & {\tiny(0.0043)} & {\tiny(0.0019)} & {\tiny(0.0012)} & {\tiny(0.0007)} & {\tiny(0.0049)} & {\tiny(0.0031)} & {\tiny(0.0013)} & {\tiny(0.0009)} & {\tiny(0.0005)} \\
-        $\sigma$ & \textbf{0.2389} & \textbf{0.0876} & \textbf{0.0115} & -0.0014 & -0.0021 & 0.2851 & 0.1293 & 0.0409 & 0.0300 & 0.0216 \\[-4pt]
-        & {\tiny(0.0202)} & {\tiny(0.0091)} & {\tiny(0.0029)} & {\tiny(0.0021)} & {\tiny(0.0015)} & {\tiny(0.0143)} & {\tiny(0.0065)} & {\tiny(0.0021)} & {\tiny(0.0015)} & {\tiny(0.0011)} \\
+        $\beta_{0}$ & \textbf{-0.4514} & \textbf{-0.2191} & \textbf{-0.0428} & -0.0068 & 0.0027 & 0.4303 & 0.2607 & 0.0950 & 0.0604 & 0.0370 \\[-4pt]
+         & {\tiny(0.0304)} & {\tiny(0.0184)} & {\tiny(0.0067)} & {\tiny(0.0043)} & {\tiny(0.0026)} & {\tiny(0.0216)} & {\tiny(0.0131)} & {\tiny(0.0048)} & {\tiny(0.0030)} & {\tiny(0.0019)} \\
+        $\beta_{1}$ & 0.0118 & 0.0000 & 0.0006 & -0.0009 & -0.0010 & 0.0918 & 0.0586 & 0.0302 & 0.0240 & 0.0183 \\[-4pt]
+        & {\tiny(0.0065)} & {\tiny(0.0041)} & {\tiny(0.0021)} & {\tiny(0.0017)} & {\tiny(0.0013)} & {\tiny(0.0046)} & {\tiny(0.0029)} & {\tiny(0.0015)} & {\tiny(0.0012)} & {\tiny(0.0009)}\\
+        $\beta_{2}$ & \textbf{0.0907} & \textbf{0.0381} & \textbf{0.0084} & \textbf{0.0029} & -0.0001 & 0.0922 & 0.0571 & 0.0262 & 0.0176 & 0.0107 \\[-4pt]
+        & {\tiny(0.0065)} & {\tiny(0.0040)} & {\tiny(0.0019)} & {\tiny(0.0012)} & {\tiny(0.0008)} & {\tiny(0.0046)} & {\tiny(0.0029)} & {\tiny(0.0013)} & {\tiny(0.0009)} & {\tiny(0.0005)} \\
+        $\sigma$ & \textbf{0.2207} & \textbf{0.0821} & \textbf{0.0065} & -0.0037 & \textbf{-0.0042} & 0.2939 & 0.1011 & 0.0371 & 0.0299 & 0.0208 \\[-4pt]
+        & {\tiny(0.0208)} & {\tiny(0.0072)} & {\tiny(0.0026)} & {\tiny(0.0021)} & {\tiny(0.0015)} & {\tiny(0.0147)} & {\tiny(0.0051)} & {\tiny(0.0019)} & {\tiny(0.0015)} & {\tiny(0.0010)} \\
         \bottomrule
     \end{tabular}
     \begin{tablenotes}
@@ -76,16 +76,16 @@ Ideally, we would anticipate observing zero bias across various $n_{\text{obs}}$
 \label{tbl-2}
 \end{table}
 
-For the parameters of $M_{2}$, we also observe a convergence towards the true estimands. When comparing @fig-kdeplot-loc with @fig-kdeplot-logit, the latter exhibits a wider spread. For @fig-kdeplot-logit we also observe that the distributions appear to be slightly right skewed. Even for $n_{\text{obs}}$ the empirical distribution is not centered around the true value.
+For the parameters of $M_{2}$, we also observe a convergence towards the true estimands. When comparing @fig-kdeplot-loc with @fig-kdeplot-logit, the latter exhibits a wider spread. For @fig-kdeplot-logit we furthermore observe, that the distributions appear to be slightly right skewed. Even for large $n_{\text{obs}}$ the empirical distribution is not centered around the true value.
 
 ![Kernel density for the posterior means of the logit parameters of $M_{2}$, true parameters given by $\betavec = [1.0, 2.0]^{\mathrm{T}}$ (grey dashed line).](assets/plots/plot10.pdf){width=80% fig-scap="Kernel density for the logit parameters of $M_{2}$." #fig-kdeplot-logit}
 
-The findings above are validated in Table \ref{tbl-3}. For the paramters of $M_{2}$ we  observe a slight postitive bias that gradually diminishes with a growing sample size. For both parameters we observe several times that 0 is not covered by the respective 95\% CIs. Moreover the bias also seems rather large in magnitude. However, this bias tends to diminish as the sample size increases. Research also showed that logistic regression demonstrates bias with smaller sample sizes when using maximum likelihood estimation [@Nemes2009]. The EmpSEs once more demonstrate a convergence toward zero. But the EmpSEs are larger in Table \ref{tbl-1} compared Table \ref{tbl-2}.
+The findings above are validated in Table \ref{tbl-3}. We detect a considerable positive bias in the parameters of $M_{2}$, which gradually decreases as the sample size increases. For both parameters we observe several times that 0 is not covered by the respective 95\% CIs, even for larger sample sizes. Research generally showed that logistic regression demonstrates bias in smaller sample sizes when using maximum likelihood estimation [@Nemes2009], which partly helps in explaining the observed results. The EmpSEs once more demonstrate a convergence toward zero. But the EmpSEs in Table \ref{tbl-1} are larger compared Table \ref{tbl-2}.
 
 \begin{table}[htbp]
 \footnotesize
 \centering
-\caption{Simulation results for the parameters of $M_{2}$.}
+\caption{Simulation results for the parameters of $M_{2}$, using BBVI.}
 \resizebox{\textwidth}{!}{%
 \begin{threeparttable}
     \begin{tabular}{lrrrrrrrrrr}
@@ -95,10 +95,10 @@ The findings above are validated in Table \ref{tbl-3}. For the paramters of $M_{
         \cmidrule(lr){7-11}
         $n_{\text{obs}}$ & 50 & 100 & 500 & 1000 & 5000 & 50 & 100 & 500 & 1000 & 5000 \\
         \midrule
-        $\beta_{0}$ & \textbf{0.1904} & 0.0631 & 0.0044 & \textbf{-0.0481} & 0.0137 & 0.7180 & 0.5568 & 0.2632 & 0.2072 & 0.1103 \\[-4pt]
-        & {\tiny(0.0508)} & {\tiny(0.0394)} & {\tiny(0.0186)} & {\tiny(0.0147)} & {\tiny(0.0078)} & {\tiny(0.0360)} & {\tiny(0.0279)} & {\tiny(0.0132)} & {\tiny(0.0104)} & {\tiny(0.0055)} \\
-        $\beta_{1}$ & \textbf{0.3578} & \textbf{0.1914} & \textbf{0.0354} & 0.0111 & \textbf{0.0368} & 0.9137 & 0.6532 & 0.2905 & 0.2349 & 0.1167 \\[-4pt]
-        & {\tiny(0.0646)} & {\tiny(0.0462)} & {\tiny(0.0205)} & {\tiny(0.0166)} & {\tiny(0.0083)} & {\tiny(0.0458)} & {\tiny(0.0327)} & {\tiny(0.0146)} & {\tiny(0.0118)} & {\tiny(0.0058)} \\
+        $\beta_{0}$ & \textbf{0.1774} & 0.0663 & 0.0042 & -0.0231 & \textbf{0.0179} & 0.7487 & 0.5414 & 0.2567 & 0.2042 & 0.1139 \\[-4pt]
+        & {\tiny(0.0529)} & {\tiny(0.0383)} & {\tiny(0.0182)} & {\tiny(0.0144)} & {\tiny(0.0081)} & {\tiny(0.0375)} & {\tiny(0.0271)} & {\tiny(0.0129)} & {\tiny(0.0102)} & {\tiny(0.0057)} \\
+        $\beta_{1}$ & \textbf{0.3617} & \textbf{0.1845} & 0.0322 & \textbf{0.0388} & \textbf{0.0488} & 0.9235 & 0.6648 & 0.2996 & 0.2129 & 0.1123 \\[-4pt]
+        & {\tiny(0.0653)} & {\tiny(0.0470)} & {\tiny(0.0212)} & {\tiny(0.0151)} & {\tiny(0.0079)} & {\tiny(0.0463)} & {\tiny(0.0333)} & {\tiny(0.0150)} & {\tiny(0.0107)} & {\tiny(0.0056)} \\
         \bottomrule
     \end{tabular}
     \begin{tablenotes}
@@ -110,7 +110,11 @@ The findings above are validated in Table \ref{tbl-3}. For the paramters of $M_{
 \label{tbl-3}
 \end{table}
 
-In this study we showed that on the one hand the posterior means of BBVI yield significantly inaccuracies in small sample sizes, but enjoy the property of consistency. Moreover, the results are promising as there is no indication of an implementation error causing systematic errors and, consequently, biased estimates beyond what one would expect from literature. Remarkably, VI seems to accurately estimate the posterior means of parameters in common regression models with quite high accuracy, in medium to large sample sizes.
+Finally, we compare the performance measures obtained from BBVI with those derived from MCMC. For model $M_{1}$	​, we observe that MCMC produces unbiased estimates, even for low sample sizes (refer to Table \ref{tbl-5}). Additionally, all biases are relatively small in magnitude, a contrast to our findings for BBVI. Moreover, the EmpSEs from BBVI are generally larger than those obtained from MCMC. When comparing both performance measures, BBVI seems to yield similar results for $n_{\text{obs}} \geq 500$.
+
+The results for $M_{2}$ using MCMC are depicted in Table \ref{tbl-6}. We find that MCMC also obtains sizeable significant biases for low to medium samples sizes. However, the biases vanishes for $n_{\text{obs}} \geq 1000$. Comparing the EmpSEs we find that MCMC obtains larger EmpSEs for low samples sizes. In general, it seems that MCMC exhibits faster and more consistent convergence compared to BBVI.
+
+In this study, we demonstrated that while the posterior means of BBVI exhibit substantial inaccuracies in small sample sizes, they possess the property of consistency. However, even with larger sample sizes, we sometimes observed a persistent significant bias, albeit diminished in size. Moreover, we find that with a sample size of 500, BBVI produces comparable results to MCMC. Interestingly, in logistic regression with small sample sizes, BBVI demonstrates a narrower spread of posterior mean estimates compared to MCMC. Finally, there is no indication of an implementation error causing systematic errors and, consequently, biased estimates beyond what one would expect from literature. Remarkably, VI seems to accurately estimate the posterior means of parameters in common regression models with relatively high accuracy, in medium to large sample sizes.
 
 ## Posterior density study I
 

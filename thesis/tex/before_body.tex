@@ -67,21 +67,22 @@ December, 2023 \\
 
 \section*{Abstract}
 
-The thesis explores variational inference as a viable alternative tool for 
-tackling Bayesian inference problems, allowing for the approximation of 
-posterior distributions through optimization. We study "black box" variational inference, 
+This thesis explores variational inference as a viable alternative tool for 
+tackling Bayesian inference problems, 
+allowing for the approximation of posterior distributions through optimization. 
+We study "black box" variational inference, in Bayesian semiparametric distributional regression models,
 a method enabling inference in numerous probabilistic models without requiring model-specific derivations.
 The "black box" variational inference algorithm has been implemented in Python 
-within a software package consisting of a model building and inference library 
-that leverage the framework of probabilistic graphical models.
+within a software package consisting of a model building and inference library, 
+which leverage the framework of probabilistic graphical models.
 A simulation study shows that the implemented variational inference algorithm results in 
 consistent estimates when considering the posterior means of the model parameters. 
-Furthermore, the thesis conducts a simulation study to analyze the posterior distributions 
-of Markov chain Monte Carlo and "black box" variational inference, 
-revealing that variational inference yields rather similar posterior distributions.
+Furthermore, the thesis conducts a simulation study to compare the posterior distributions 
+of Markov chain Monte Carlo and "black box" variational inference. It demonstrates that 
+the mean-field variational family over parameter blocks performs more effectively for certain blocks compared to others.
 Finally variational inference indicates, the ability to 
 approximate the posterior well even after a low number of optimization iterations. 
-This is in contrast to Markov Chain Monte Carlo methods which usually require a 
+This is in contrast to Markov Chain Monte Carlo methods, which usually require a 
 large number of sampling iterations to obtain a good approximation of the posterior.
 
 \clearpage

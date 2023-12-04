@@ -97,8 +97,7 @@ sigma_dist = tiger.Dist(tfjd.InverseGamma,
                         concentration=sigma_a, 
                         scale=sigma_b)
 
-# Use paramter param_space="positive" to transform 
-# sigma into unconstrained space  
+# Set param_space="positive" for a positive parameter space
 sigma = tiger.Param(value=10.0, 
                     distribution=sigma_dist, 
                     param_space="positive", 
@@ -108,10 +107,73 @@ sigma = tiger.Param(value=10.0,
 lpred = tiger.Lpred(obs=X, 
                     beta=beta)
 
-# Set up response distribution
+# Set up the response distribution
 response_dist = tiger.Dist(tfjd.Normal, 
                            loc=lpred, 
                            scale=sigma)
 m = tiger.Model(response=np.ndarray, 
                 distribution=response_dist)
 ```
+
+## Consistency study results for MCMC {#sec-mcmc-cons}
+
+Tables \ref{tbl-5} and \ref{tbl-6} present the simulation study results for assessing consistency when employing MCMC.
+
+\begin{table}[htbp]
+\centering
+\caption{Simulation results for the parameters of $M_{1}$, using MCMC.}
+\resizebox{\textwidth}{!}{%
+\begin{threeparttable}
+    \begin{tabular}{lrrrrrrrrrr}
+        \toprule
+         & \multicolumn{5}{c}{Bias} & \multicolumn{5}{c}{EmpSE} \\
+        \cmidrule(lr){2-6} 
+        \cmidrule(lr){7-11} 
+        $n_{\text{obs}}$ & 50 & 100 & 500 & 1000 & 5000 & 50 & 100 & 500 & 1000 & 5000 \\
+        \midrule
+        $\beta_{0}$ & -0.0097 & 0.0082 & -0.0054 & 0.0012 & 0.0013 & 0.2280 & 0.1547 & 0.0668 & 0.0489 & 0.0215 \\[-4pt]
+         & {\tiny(0.0161)} & {\tiny(0.0109)} & {\tiny(0.0047)} & {\tiny(0.0035)} & {\tiny(0.0015)} & {\tiny(0.0114)} & {\tiny(0.0078)} & {\tiny(0.0033)} & {\tiny(0.0024)} & {\tiny(0.0011)} \\
+        $\beta_{1}$ & \textbf{0.0120} & 0.0028 & 0.0013 & 0.0001 & -0.0003 & 0.0825 & 0.0524 & 0.0248 & 0.0185 & 0.0085 \\[-4pt]
+        & {\tiny(0.0058)} & {\tiny(0.0037)} & {\tiny(0.0018)} & {\tiny(0.0013)} & {\tiny(0.0006)} & {\tiny(0.0041)} & {\tiny(0.0026)} & {\tiny(0.0012)} & {\tiny(0.0009)} & {\tiny(0.0004)}\\
+        $\beta_{2}$ & 0.0036 & -0.0061 & 0.0008 & 0.0005 & -0.0003 & 0.0561 & 0.0374 & 0.0174 & 0.0121 & 0.0054 \\[-4pt]
+        & {\tiny(0.0040)} & {\tiny(0.0026)} & {\tiny(0.0012)} & {\tiny(0.0009)} & {\tiny(0.0004)} & {\tiny(0.0028)} & {\tiny(0.0019)} & {\tiny(0.0009)} & {\tiny(0.0006)} & {\tiny(0.0003)} \\
+        $\sigma$ & 0.0103 & 0.0128 & \textbf{0.0053} & -0.0014 & -0.0008 & 0.1017 & 0.0727 & 0.0322 & 0.0249 & 0.0095 \\[-4pt]
+        & {\tiny(0.0072)} & {\tiny(0.0051)} & {\tiny(0.0023)} & {\tiny(0.0018)} & {\tiny(0.0007)} & {\tiny(0.0051)} & {\tiny(0.0036)} & {\tiny(0.0016)} & {\tiny(0.0012)} & {\tiny(0.0005)} \\
+        \bottomrule
+    \end{tabular}
+    \begin{tablenotes}
+      \footnotesize	
+      \item Corresponding Monte Carlo SEs are provided below in parentheses; Bias estimates that do not cover 0 in their 95\% CI are shown in bold; $n_{\text{sim}}=200$.
+    \end{tablenotes}
+\end{threeparttable}% 
+}
+\label{tbl-5}
+\end{table}
+
+\begin{table}[htbp]
+\footnotesize
+\centering
+\caption{Simulation results for the parameters of $M_{2}$, using MCMC.}
+\resizebox{\textwidth}{!}{%
+\begin{threeparttable}
+    \begin{tabular}{lrrrrrrrrrr}
+        \toprule
+         & \multicolumn{5}{c}{Bias} &\multicolumn {5}{c}{EmpSE} \\
+        \cmidrule(lr){2-6} 
+        \cmidrule(lr){7-11}
+        $n_{\text{obs}}$ & 50 & 100 & 500 & 1000 & 5000 & 50 & 100 & 500 & 1000 & 5000 \\
+        \midrule
+        $\beta_{0}$ & \textbf{0.5332} & \textbf{0.1997} & \textbf{0.0475} & -0.0047 & 0.0115 & 1.1853 & 0.6048 & 0.1857 & 0.1441 & 0.0541 \\[-4pt]
+        & {\tiny(0.0838)} & {\tiny(0.0428)} & {\tiny(0.0131)} & {\tiny(0.0102)} & {\tiny(0.0038)} & {\tiny(0.0594)} & {\tiny(0.0303)} & {\tiny(0.0093)} & {\tiny(0.0072)} & {\tiny(0.0027)} \\
+        $\beta_{1}$ & \textbf{0.9999} & \textbf{0.3866} & \textbf{0.0546} & 0.0187 & 0.0039 & 1.9204 & 0.6371 & 0.1899 & 0.1362 & 0.0587 \\[-4pt]
+        & {\tiny(0.1358)} & {\tiny(0.0451)} & {\tiny(0.0134)} & {\tiny(0.0096)} & {\tiny(0.0041)} & {\tiny(0.0963)} & {\tiny(0.0319)} & {\tiny(0.0095)} & {\tiny(0.0068)} & {\tiny(0.0029)} \\
+        \bottomrule
+    \end{tabular}
+    \begin{tablenotes}
+      \footnotesize	
+      \item Corresponding Monte Carlo SEs are provided below in parentheses; Bias estimates that do not cover 0 in their 95\% CI are shown in bold; $n_{\text{sim}}=200$.
+    \end{tablenotes}
+\end{threeparttable}%
+}
+\label{tbl-6}
+\end{table}
