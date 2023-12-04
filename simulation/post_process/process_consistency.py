@@ -3,33 +3,39 @@ Process the results from the simulation to obtain the targets.
 """
 
 import sys
-import os 
+import os
 
 import numpy as np
 import pandas as pd
-import jax 
+import jax
 import jax.numpy as jnp
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 def check_missing_data(results):
+    libs = ["tigerpy", "liesel"]
     missing_data = []
-    for j, result in enumerate(results):
-        data_dict = {}
-        keys = [key for key in result.keys() if "_true" not in key]
-        for key in keys:
-            if np.any(np.isnan(result[key])):
-                data_dict[key] = np.argwhere(np.isnan(result[key]))
-            else:
-                data_dict[key] = None
-        missing_data.append(data_dict)
+    data_dict = {lib: {} for lib in libs}
+
+    for result in results:
+        for lib, method in result.items():
+            keys = [key for key in method.keys() if "_true" not in key]
+            for key in keys:
+                if np.any(np.isnan(method[key])):
+                    data_dict[lib][key] = np.argwhere(np.isnan(method[key]))
+                else:
+                    data_dict[lib][key] = None
+            missing_data.append(data_dict)
     
     exist_missing = False
     for data_dict in missing_data:
-        for value in data_dict.values():
-            if value != None:
-                exist_missing = True
+        for lib, method in data_dict.items():
+            for value in method.values():
+                if value != None:
+                    exist_missing = True
+                    break
+            if exist_missing:
                 break
         if exist_missing:
             break
@@ -39,9 +45,15 @@ def check_missing_data(results):
 
     return missing_data, exist_missing
 
+def split_libs(results):
+    tiger = [result["tigerpy"] for result in results]
+    lsl = [result["liesel"] for result in results]
+    return tiger, lsl
+
 def create_data_plot(results, grid):
     plot_data = {}
     store = []
+
     for j, result in enumerate(results): 
         data_dict = {}
         keys = [key for key in result.keys() if "_true" not in key]
@@ -63,7 +75,7 @@ def create_data_plot(results, grid):
 
     return plot_data
 
-def plot_univariate(data_plot):
+def plot_univariate(data_plot, lib: str):
 
     current_path = os.getcwd()
     folder_path = os.path.join(current_path, "simulation/plots/consistency")
@@ -82,7 +94,7 @@ def plot_univariate(data_plot):
         for est, true in zip(response_dist.items(), true_coef.items()):
             key, value = est
             key_true, value_true = true
-            filename = "plot" + "_" + str(fig_count) + ".pdf"
+            filename = "plot" + "_" + lib + "_" + str(fig_count) + ".pdf"
             full_filepath = os.path.join(folder_path, 
                                          filename)
             sns.set_style(style='whitegrid')
@@ -113,8 +125,8 @@ def plot_univariate(data_plot):
 
 def analyze_results(results, grid):
     results_cons = {}
+    
     for j, result in enumerate(results):
-
         keys_est = [key for key in result.keys() if "_true" not in key]
         keys_true = [key for key in result.keys() if "_true" in key]
 
@@ -167,7 +179,7 @@ def calc_mc_se_empse(result):
     mc_se_empse = emp_se/np.sqrt(2*(result.shape[0] - 1))
     return mc_se_empse
 
-def create_latex_table(results_proc):
+def create_latex_table(results_proc, lib):
     current_path = os.getcwd()
     folder_path = os.path.join(current_path, "simulation/tables")
 
@@ -182,7 +194,7 @@ def create_latex_table(results_proc):
         combine_data = [data.reset_index() for data in result.values()]
         table_data = pd.concat(combine_data, axis=0)
         print_table = table_data.pivot(index="index", columns="n_obs")
-        filename = "sim1_table" + "_" + str(table_count) + ".latex"
+        filename = "sim1_table" + "_" + lib + "_" + str(table_count) + ".latex"
         full_filepath = os.path.join(folder_path, 
                                      filename)
         print_table.to_latex(buf=full_filepath,

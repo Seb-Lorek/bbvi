@@ -102,22 +102,38 @@ if __name__ == "__main__":
         with open(full_filepath, "wb") as file:
             pickle.dump(missing_data, file)
 
-    # Plot the univariate distributions 
-    data_plot = proc1.create_data_plot(results1, var_grid1)
-    proc1.plot_univariate(data_plot)
+    # Split the data set by the different methods
+    results_tiger, results_liesel = proc1.split_libs(results1)
 
-    # Create the performance measure dataset 
-    results_proc1 = proc1.analyze_results(results1, var_grid1)
+    # Plot the univariate distributions for tiger 
+    data_plot_tiger = proc1.create_data_plot(results_tiger, var_grid1)
+    proc1.plot_univariate(data_plot_tiger, lib="tigerpy")
+
+    # Plot the univariate distributions for tiger 
+    data_plot_liesel = proc1.create_data_plot(results_liesel, var_grid1)
+    proc1.plot_univariate(data_plot_liesel, lib="liesel")
+
+    # Create the performance measure dataset for both methods
+    results_proc1_tiger = proc1.analyze_results(results_tiger, var_grid1)
+    results_proc1_liesel = proc1.analyze_results(results_liesel, var_grid1)
     
-    filename = "sim1_proc.pickle"
+    filename = "sim1_proc_tiger.pickle"
     full_filepath = os.path.join(folder_path, filename)
 
     # Export the object using pickle
     with open(full_filepath, "wb") as file:
-        pickle.dump(results_proc1, file)
+        pickle.dump(results_proc1_tiger, file)
+
+    filename = "sim1_proc_liesel.pickle"
+    full_filepath = os.path.join(folder_path, filename)
+
+    # Export the object using pickle
+    with open(full_filepath, "wb") as file:
+        pickle.dump(results_proc1_liesel, file)
 
     # Create the latex table for the results 
-    proc1.create_latex_table(results_proc1)
+    proc1.create_latex_table(results_proc1_tiger, lib="tigerpy")
+    proc1.create_latex_table(results_proc1_liesel, lib="liesel")
 
     # Track end time of simulation 1
     end_time = time.time()
@@ -132,11 +148,10 @@ if __name__ == "__main__":
 
     # Set the starting key for simulation 2 
     key = jax.random.PRNGKey(175380738)
-    keys = jax.random.split(key, 3)
-    n_sim = 400
-    n_obs = 1000
+    key, subkey = jax.random.split(key)
+    n_sim = 100
     
-    results2, var_grid2 = sim2.sim_fun(n_sim, n_obs, keys[0])
+    plot_results2, sim_results2, var_grid2 = sim2.sim_fun(n_sim, subkey)
 
     # Create the full path to the file
     filename = "sim2_raw.pickle"
@@ -144,10 +159,10 @@ if __name__ == "__main__":
 
     # Export the object using pickle
     with open(full_filepath, "wb") as file:
-        pickle.dump(results2, file)
+        pickle.dump(sim_results2, file)
 
     # Check for missing values 
-    missing_data, exist_missing = proc2.check_missing_data(results2)
+    missing_data, exist_missing = proc2.check_missing_data(sim_results2)
 
     # Export missing data only if there are missing values 
     if exist_missing: 
@@ -156,9 +171,9 @@ if __name__ == "__main__":
         with open(full_filepath, "wb") as file:
             pickle.dump(missing_data, file)
 
-    proc2.plot_post_dens(results2, n_sim, keys[1])
+    proc2.plot_post_dens(plot_results2)
 
-    sim2_proc = proc2.calc_wasserstein(results2, keys[2])
+    sim2_proc = proc2.calc_wasserstein(sim_results2)
 
     # Create the full path to the file
     filename = "sim2_proc.pickle"
@@ -166,7 +181,7 @@ if __name__ == "__main__":
 
     # Export the object using pickle
     with open(full_filepath, "wb") as file:
-        pickle.dump(results2, file)
+        pickle.dump(sim2_proc, file)
 
     proc2.plot_wasserstein(sim2_proc)
 
