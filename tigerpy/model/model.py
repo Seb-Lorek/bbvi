@@ -128,7 +128,7 @@ class Lpred:
     def update_lpred(self) -> jax.Array:
         """
         Method to update the attribute value by calculating the linear predictor
-        and potentially apply an inverse link function (bijetor).
+        and potentially apply an inverse link function.
 
         Returns:
             jax.Array: Values of the linear predictor.

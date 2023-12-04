@@ -220,7 +220,7 @@ class Bbvi:
                 # Calculate the linear predictor with the new samples
                 lpred_val = calc_lpred(design_matrix, 
                                        params,
-                                       attr["bijector"])
+                                       attr["function"])
                 model_state[node] = lpred_val 
             # Calc node 
             elif node_type == "calc":
@@ -228,7 +228,7 @@ class Bbvi:
                 for parent in parents:
                     edge = self.digraph.get_edge_data(parent, node)
                     params[edge["role"]] = model_state[parent]
-                calc_val = calc_calc(attr["bijector"], 
+                calc_val = calc_calc(attr["function"], 
                                      params)
                 model_state[node] = calc_val    
             # Strong node          
@@ -312,7 +312,7 @@ class Bbvi:
                 # Calculate the linear predictor with the new samples
                 lpred_val = calc_lpred(design_matrix, 
                                        params,
-                                       attr["bijector"])
+                                       attr["function"])
                 model_state[node] = lpred_val   
             # Calc node 
             elif node_type == "calc":
@@ -320,7 +320,7 @@ class Bbvi:
                 for parent in parents:
                     edge = self.digraph.get_edge_data(parent, node)
                     params[edge["role"]] = model_state[parent]
-                calc_val = calc_calc(attr["bijector"], 
+                calc_val = calc_calc(attr["function"], 
                                      params)
                 model_state[node] = calc_val   
             # Strong node          

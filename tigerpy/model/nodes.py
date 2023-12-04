@@ -78,7 +78,7 @@ class ModelGraph:
     def add_lpred_node(self, name: str, lpred: Lpred) -> None:
         """
         Method to add a linear predictor (lpred) node to the DAG. Lpred nodes are linear predictors
-        with a bijector function (inverse link function).
+        with a inverse link function.
 
         Args:
             name (str): Name of the linear predictor node.
@@ -86,7 +86,7 @@ class ModelGraph:
         """
 
         attr = {"value": lpred.value,
-                 "bijector": lpred.function}
+                 "function": lpred.function}
         self.digraph.add_node(name, attr=attr)
         self.digraph.nodes[name]["node_type"] = "lpred"
         self.digraph.nodes[name]["input"] = {}
@@ -94,7 +94,7 @@ class ModelGraph:
     def add_calc_node(self, name: str, calc: Calc) -> None:
         """
         Method to add a calculation node (calc) node to the DAG. Calc nodes are 
-        nodes with a bijector function 
+        nodes with a transformation function 
 
         Args:
             name (str): Name of the calculation node.
@@ -102,7 +102,7 @@ class ModelGraph:
         """
 
         attr = {"value": calc.value,
-                "bijector": calc.function}
+                "function": calc.function}
         self.digraph.add_node(name, attr=attr)
         self.digraph.nodes[name]["node_type"] = "calc"
         self.digraph.nodes[name]["input"] = {}
@@ -192,12 +192,12 @@ class ModelGraph:
             attr (dict): Attributes of the node.
 
         Returns:
-            jax.Array: Values for the calculation node after applying the bijector (reparameterization function).
+            jax.Array: Values for the calculation node after applying the reparameterization function.
         """
-        bijector = attr["bijector"]
+        function = attr["function"]
         input_pass = self.digraph.nodes[node]["input"]
-        # print(input_pass)
-        transformed = bijector(*input_pass.values())
+        
+        transformed = function(*input_pass.values())
 
         return transformed
 
@@ -212,17 +212,17 @@ class ModelGraph:
             attr (dict): Attributes of the node.
 
         Returns:
-            Array: Values for the linear predictor after applying the bijector (inverse link function).
+            Array: Values for the linear predictor after applying the inverse link function.
         """
 
-        bijector = attr["bijector"]
+        function = attr["function"]
         design_matrix = self.digraph.nodes[node]["input"]["fixed"]
         input_pass = self.digraph.nodes[node]["input"]
         values_params = jnp.concatenate([item for key, item in input_pass.items() if key != "fixed"], axis=-1)
         nu = jnp.dot(design_matrix, values_params)
 
-        if bijector is not None:
-            transformed = bijector(nu)
+        if function is not None:
+            transformed = function(nu)
         else:
             transformed = nu
 
@@ -325,7 +325,7 @@ class ModelGraph:
                 self.digraph.add_edge(node_name, 
                                       child_node, 
                                       role=param_name,
-                                      bijector=obj.function)
+                                      function=obj.function)
                 name_fixed = obj.obs.name
                 self.add_fixed_node(name=name_fixed, 
                                     obs=obj.obs)
@@ -337,7 +337,7 @@ class ModelGraph:
                 self.digraph.add_edge(node_name, 
                                       child_node, 
                                       role=param_name,
-                                      bijector=obj.function)
+                                      function=obj.function)
                 param_name = node_name
         elif isinstance(obj, Calc):
             node_name = param_name
@@ -346,7 +346,7 @@ class ModelGraph:
             self.digraph.add_edge(node_name, 
                                   child_node, 
                                   role=param_name, 
-                                  bijector=obj.function)
+                                  function=obj.function)
         elif isinstance(obj, Param):
             node_name = obj.name
             self.add_strong_node(name=node_name, 
@@ -575,7 +575,7 @@ class ModelGraph:
                                node_shape=node_shapes["weak"], 
                                node_size=calculate_node_size(self.digraph))
 
-        edge_labels = nx.get_edge_attributes(self.digraph, "bijector")
+        edge_labels = nx.get_edge_attributes(self.digraph, "function")
 
         for key, value in edge_labels.items():
             if value is not None and "jax" in str(value):

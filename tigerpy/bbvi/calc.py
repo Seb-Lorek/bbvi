@@ -34,30 +34,30 @@ from .transform import (
     log_cholesky_parametrization_to_tril
 )
 
-def calc_calc(bijector: Callable, 
+def calc_calc(function: Callable, 
               params: Dict) -> jax.Array:
     """
     Method to calculate the values for a calc node.
 
     Args:
-        bijector (Callable): Function that reparameterizes the parameters of the response
+        function (Callable): Function that reparameterizes the parameters of the response
         in terms of location, scale and shape.
         params (Dict): The location, scale and shape paramters (linear predictor nodes).
 
     Returns:
         jax.Array: The value of the response distribution parameter
     """
-    return bijector(**params)
+    return function(**params)
 
 def calc_lpred(design_matrix: jax.Array, 
                params: Dict,
-               bijector: Callable) -> jax.Array:
+               function: Callable) -> jax.Array:
     """
     Method to calculate the values for a linear predictor.
     Args:
         design_matrix (Dict): jax.Array that contains a design matrix to calculate the linear predictor.
         params (Dict): Parameters of the linear predictor in a dictionary using new variational samples.
-        bijector (Callable): The inverse link function that transform the linear predictor 
+        function (Callable): The inverse link function that transform the linear predictor 
         to the appropriate parameter space.
     Returns:
         jax.Array: The linear predictor at the new variational samples.
@@ -68,8 +68,8 @@ def calc_lpred(design_matrix: jax.Array,
     batch_nu = jnp.matmul(batch_design_matrix, batch_params)
     nu = jnp.squeeze(batch_nu)
 
-    if bijector is not None:
-        transformed = bijector(nu)
+    if function is not None:
+        transformed = function(nu)
     else:
         transformed = nu
     return transformed
