@@ -41,7 +41,7 @@ def check_missing_data(results):
 
     return missing_data, exist_missing
 
-def plot_post_dens(results: dict, n_sim: int, key: jax.Array) -> None:
+def plot_post_dens(results: dict) -> None:
 
     current_path = os.getcwd()
     folder_path = os.path.join(current_path, "simulation/plots/post_density")
@@ -52,12 +52,11 @@ def plot_post_dens(results: dict, n_sim: int, key: jax.Array) -> None:
     else:
         print(f"Directory '{folder_path}' already exists.")
 
-    bbvi_choose = jax.random.choice(key, n_sim, shape=(4,), replace=False)
-    keys_tiger = list(results["tigerpy"])
+    keys_tiger = list(results["tigerpy"].keys())
 
     fig_count = 1
     for kw in keys_tiger:
-        arr_tiger = results["tigerpy"][kw][bbvi_choose,:,:]
+        arr_tiger = results["tigerpy"][kw]
         arr_liesel = results["liesel"][kw]
         col_tiger = ["BBVI_" + str(i) for i in range(arr_tiger.shape[0])]
         col_liesel = ["MCMC_" + str(i) for i in range(arr_liesel.shape[0])]
@@ -102,7 +101,6 @@ def plot_post_dens(results: dict, n_sim: int, key: jax.Array) -> None:
                 df_liesel_sub = df_liesel[df_liesel["gamma_pos"]==i].drop(columns="gamma_pos")
                     
                 label = r"\tilde{\gamma}"
-                count = str(i)
                 sns.kdeplot(df_tiger_sub, bw_adjust=1.5, ax=axs[j], palette="Reds", legend=False)
                 sns.kdeplot(df_liesel_sub, bw_adjust=1.5, ax=axs[j], palette="Blues", legend=False)
                 axs[j].set_xlabel(rf"${label}_{{{str(i)}}}$")
@@ -160,23 +158,20 @@ def plot_post_dens(results: dict, n_sim: int, key: jax.Array) -> None:
             sns.reset_orig()
             fig_count += 1
 
-def calc_wasserstein(results: dict, key: jax.Array) -> dict:
-    kws_tiger = list(results["tigerpy"])
-    run = jax.random.choice(key=key, a=4, shape=(1,), replace=False)
+def calc_wasserstein(results: dict) -> dict:
+
+    kws_tiger = list(results["tigerpy"].keys())
     wasserstein_dist = {}
     for kw in kws_tiger:
         arr_tiger = results["tigerpy"][kw]
         arr_liesel = results["liesel"][kw]
-        if arr_liesel.ndim != 3:
-            arr_liesel = jnp.expand_dims(arr_liesel, axis=-1)
-        arr_liesel = jnp.squeeze(arr_liesel[run,:,:], axis=0)
 
         arr_w = jnp.array([])
         n = arr_tiger.shape[1]
         a, b = jnp.ones((n,)) / n, jnp.ones((n,)) / n  
 
         for j in range(arr_tiger.shape[0]):
-            M = ot.dist(arr_liesel, arr_tiger[j,:,:])
+            M = ot.dist(arr_liesel[j,:,:], arr_tiger[j,:,:])
             w = jnp.sqrt(ot.emd2(a, b, M))
             arr_w = jnp.append(arr_w, w)
 

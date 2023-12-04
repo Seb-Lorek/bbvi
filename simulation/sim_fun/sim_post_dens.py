@@ -69,15 +69,15 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 # Function to execute the simulation study 
-def sim_fun(n_sim: int, n_obs: int, key: jax.Array) -> Tuple[dict, dict]:
+def sim_fun(n_sim: int, key: jax.Array) -> Tuple[dict, dict]:
     # Create the grid of parameters of the simulation study
-    var_grid = create_var_grid(n_obs)
-
+    var_grid = create_var_grid(n_sim)
+    
+    # Plot the data once at the start 
     key, subkey = jax.random.split(key)
     # Create key for data generation 
-    data_dict = sim_data.normal_complex_const(n_obs=n_obs, 
+    data_dict = sim_data.normal_complex_const(n_obs=var_grid["n_obs"], 
                                               key=subkey)
-    
     # Set the path to store store the figures in simulation/plots/post_density
     current_path = os.getcwd()
     folder_path = os.path.join(current_path, "simulation/plots/post_density")
@@ -92,78 +92,57 @@ def sim_fun(n_sim: int, n_obs: int, key: jax.Array) -> Tuple[dict, dict]:
                                  filename)
     sim_data.plot_sim_data(data_dict["data"], dist="normal", savepath=full_filepath)
 
-    plot_results = []
-    sim_results = {}
-    for config in var_grid:
-        key, subkey = jax.random.split(key)
+    key, subkey = jax.random.split(key)
+    plot_posteriors = plot_runs(data_dict, subkey)
+    plot_mean(plot_posteriors, data_dict)
 
-        post_results = run_model(n_sim, data_dict, config["library"], subkey)
-        plot_results.append(post_results)
-        post_samples = process_results(post_results, config["library"])
-        sim_results[config["library"]] = post_samples
+    subkeys_sim = [jax.random.fold_in(key, i) for i in range(n_sim)]
+    parallel_result = Parallel(n_jobs=-2)(delayed(do_one)(var_grid["n_obs"],
+                                                          subkeys_sim[i]) for i in range(n_sim))
+    
+    store_tiger, store_lsl = zip(*parallel_result)
+    sim_results = process_results(store_tiger, store_lsl)
+    plot_results = plot_samples(plot_posteriors)
 
     # Close the logging FileHandler
     file_handler.close()
     logger.removeHandler(file_handler)
 
-    filename = "plot_post_mean.pdf"
-    full_filepath = os.path.join(folder_path, 
-                                 filename)
-    plot_fns(plot_results, data_dict["data"], full_filepath)
-
-    return sim_results, var_grid
+    return plot_results, sim_results, var_grid
 
 # Create the grid of specifications for the simulation
-def create_var_grid(n_obs: int) -> Dict:
-    var_dict = {"library": ["tigerpy", "liesel"],
-                "n_obs": [n_obs],
-    }
+def create_var_grid(n_sim: int) -> Dict:
+    var_dict = {"n_sim": n_sim, 
+                "n_obs": 1000
+                }
 
-    # Create a list of keys and values from the var_dict
-    keys, values = zip(*var_dict.items())
+    return var_dict
 
-    # Generate all possible combinations of values
-    var_grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
+def do_one(n_obs: int, key: jax.random.PRNGKey) -> Tuple[dict, dict, dict]:
+    key, subkey = jax.random.split(key)
+    data_dict = sim_data.normal_complex_const(n_obs=n_obs, 
+                                              key=subkey)
 
-    return var_grid
-
-def run_model(n_sim: int, data_dict: Dict, library: str, key: jax.Array) -> List:
-    key, *subkeys = jax.random.split(key, 3)
-
-    model_obj = model_set_up(data_dict["data"], library, subkeys[0])
-    post_results = do_inference(n_sim, model_obj, library, subkeys[1])
-
-    return post_results
-
-def process_results(post_results: Any, library: str) -> jax.Array:
-    if library == "tigerpy":
-        seq = []
-        for q in post_results:
-            post_sample = q.get_posterior_samples(sample_shape=1000)
-            seq.append(post_sample)
-            
-        post_samples = {}
-        for kw in seq[0].keys():
-            post_samples[kw] = None
-    
-        for kw in post_samples.keys():
-            stacked_array = jnp.stack([d[kw] for d in seq], axis=0)
-            post_samples[kw] = stacked_array
-    elif library == "liesel":
-        post_samples = post_results.get_posterior_samples()
-        post_samples["gamma"] = post_samples.pop("smooth_1_coef")
-
-    return post_samples
+    results = {}
+    libs = ["tigerpy", "liesel"]
+    for lib in libs:
+        key, *subkeys = jax.random.split(key, 3)
+        model_obj = model_set_up(lib, data_dict["data"], subkeys[0])
+        p = do_inference(lib, model_obj, subkeys[1])
+        result = return_target(lib, p)
+        results[lib] = result
+   
+    return results["tigerpy"], results["liesel"] 
 
 # Define the tiger model
-def model_set_up(data: Dict, library: str, key: jax.Array) -> Union[tiger.ModelGraph, gs.EngineBuilder]:
+def model_set_up(lib: str, data: Dict, key: jax.Array) -> Union[tiger.ModelGraph, gs.EngineBuilder]:
     # In either case we use the model building library of tigerpy to construct the 
     # design matrices 
     X = tiger.Obs(name="X", intercept=True)
     X.smooth(data=data["x"])
     X.center()
     
-    if library == "tigerpy":
+    if lib == "tigerpy":
         beta_loc = tiger.Hyper(0.0, name="beta_loc")
         beta_scale = tiger.Hyper(100.0, name="beta_scale")
         beta_dist = tiger.Dist(tfjd.Normal, loc=beta_loc, scale=beta_scale)
@@ -191,7 +170,7 @@ def model_set_up(data: Dict, library: str, key: jax.Array) -> Union[tiger.ModelG
 
         final_obj = tiger.ModelGraph(model=m)
         final_obj.build_graph()
-    elif library == "liesel":
+    elif lib == "liesel":
         beta_loc = lsl.Var(0.0, name="beta_loc")
         beta_scale = lsl.Var(100.0, name="beta_scale")
         beta_dist = lsl.Dist(tfjd.Normal, loc=beta_loc, scale=beta_scale)
@@ -238,37 +217,115 @@ def model_set_up(data: Dict, library: str, key: jax.Array) -> Union[tiger.ModelG
         final_obj._show_progress = False
     return final_obj     
 
-def do_inference(n_sim: int, model_obj: Any, library: str, key: jax.Array) -> Any:
-    if library == "tigerpy":
-        subkeys_sim = [jax.random.fold_in(key, i) for i in range(n_sim)]
-        results = Parallel(n_jobs=-2)(delayed(run_tiger)(model_obj,
-                                                         subkeys_sim[i]) for i in range(n_sim))   
-    elif library == "liesel":
+def do_inference(lib: str, model_obj: Any, key: jax.Array) -> Any:
+    if lib == "tigerpy":
+        result = bbvi.Bbvi(graph=model_obj,
+                           pre_train=False,
+                           jitter_init=True,
+                           verbose=False)
+        result.run_bbvi(key=key,
+                        learning_rate=0.01,
+                        grad_clip=1,
+                        threshold=1e-2,
+                        batch_size=256,
+                        train_share=0.8,
+                        num_var_samples=64,
+                        chunk_size=50,
+                        epochs=500) 
+    elif lib == "liesel":
         model_obj.sample_all_epochs()
-        results = model_obj.get_results()
+        result = model_obj.get_results()
+
+    return result
+
+def return_target(lib: str, model_obj: Any) -> jax.Array:
+    if lib == "tigerpy":
+        post_samples = model_obj.get_posterior_samples(sample_shape=1000)
+    elif lib == "liesel":
+        post_samples = model_obj.get_posterior_samples() 
+        post_samples["gamma"] = post_samples.pop("smooth_1_coef")
+    return post_samples
+
+def process_results(store_result_tiger: Tuple, 
+                    store_result_liesel: Tuple) -> Dict:
+    libs = ["tigerpy", "liesel"]
+    post_samples = {lib:{} for lib in libs}
+    for lib in libs:
+        for kw in store_result_tiger[0].keys():
+            post_samples[lib][kw] = None
+
+    for kw in post_samples["tigerpy"].keys():
+        stacked_array = jnp.stack([d[kw] for d in store_result_tiger], axis=0)
+        post_samples["tigerpy"][kw] = stacked_array
+
+    for kw in post_samples["liesel"].keys():
+        param_list = []
+        for d in store_result_liesel:
+            arr = d[kw]
+            if arr.ndim != 3:
+                arr= jnp.expand_dims(arr, axis=-1)
+            arr = arr[0,:,:]
+            param_list.append(arr)
+        stacked_array = jnp.stack(param_list, axis=0)
+        post_samples["liesel"][kw] = stacked_array
+        
+    return post_samples
+
+# continue here 
+def plot_samples(posteriors: list) -> dict:
+    libs = ["tigerpy", "liesel"]
+    post_samples = {lib: {} for lib in libs}
+    seq = []
+
+    for q in posteriors[0]:
+        post_sample = q.get_posterior_samples(sample_shape=1000)
+        seq.append(post_sample)
+
+    for kw in post_samples["tigerpy"].keys():
+        stacked_array = jnp.stack([d[kw] for d in seq], axis=0)
+        post_samples["tigerpy"][kw] = stacked_array
+   
+        post_sample = posteriors[1][0].get_posterior_samples()
+        post_sample["gamma"] = post_sample.pop("smooth_1_coef")
+        post_samples["liesel"] = post_sample
+    
+    return post_samples
+
+def plot_runs(data_dict: dict, key: jax.Array) -> List:
+    results = []
+    results_tigerpy = []
+    results_liesel = []
+
+    for _ in range(4):
+        key, *subkeys = jax.random.split(key, 3)
+        model_obj = model_set_up("tigerpy", data_dict["data"], subkeys[0])
+        result = do_inference("tigerpy", model_obj, subkeys[1])
+        results_tigerpy.append(result)
+
+    results.append(results_tigerpy)
+
+    key, *subkeys = jax.random.split(key, 3)
+    model_obj = model_set_up("liesel", data_dict["data"], subkeys[0])
+    result = do_inference("liesel", model_obj, subkeys[1])
+    results_liesel.append(result)
+    results.append(results_liesel)
 
     return results
 
-def run_tiger(model_obj: Any, key: jax.Array) -> Any:
-    q = bbvi.Bbvi(graph=model_obj,
-                  pre_train=False,
-                  jitter_init=True,
-                  verbose=False)
-    q.run_bbvi(key=key,
-               learning_rate=0.01,
-               grad_clip=1,
-               threshold=1e-2,
-               batch_size=256,
-               train_share=0.8,
-               num_var_samples=64,
-               chunk_size=50,
-               epochs=500)
-    return q
-
-def plot_fns(posteriors: List, data: pd.DataFrame, savepath: str) -> None:
+def plot_mean(posteriors: list, data_dict: dict) -> None:
 
     q = posteriors[0][0]
-    p = posteriors[1]
+    p = posteriors[1][0]
+
+    current_path = os.getcwd()
+    folder_path = os.path.join(current_path, "simulation/plots/post_density")
+    filename = "plot_post_mean.pdf"
+    full_filepath = os.path.join(folder_path, 
+                                 filename)
+    
+    plot_fns(q=q, p=p, data=data_dict["data"], savepath=full_filepath)
+
+def plot_fns(q: Any, p: Any, data: pd.DataFrame, savepath: str) -> None:
 
     pred_data_tiger = get_pred_data_tiger(q, data)
     pred_data_liesel = get_pred_data_liesel(p, q, data)
@@ -297,18 +354,18 @@ def get_pred_data_tiger(q: bbvi.Bbvi, data: pd.DataFrame) -> pd.DataFrame:
     gamma = q.trans_var_params["gamma"]["loc"]
     loc_param = jnp.concatenate((beta, gamma))
     y_opt = q.data["X"] @ loc_param
-    df = pd.DataFrame({"x": data["x"], "y":y_opt})
+    df = pd.DataFrame({"x": data["x"], "y": y_opt})
     sort_df = df.sort_values("x")
 
     return sort_df
 
-def get_pred_data_liesel(posterior: gs.SamplingResults, q: bbvi.Bbvi, data: pd.DataFrame) -> pd.DataFrame:
-    p = gs.Summary(posterior).quantities
+def get_pred_data_liesel(p: gs.SamplingResults, q: bbvi.Bbvi, data: pd.DataFrame) -> pd.DataFrame:
+    p = gs.Summary(p).quantities
     beta = p["mean"]["beta"]
     gamma = p["mean"]["smooth_1_coef"]
     loc_param = jnp.concatenate((beta, gamma))
     y_opt = q.data["X"] @ loc_param
-    df = pd.DataFrame({"x": data["x"], "y":y_opt})
+    df = pd.DataFrame({"x": data["x"], "y": y_opt})
     sort_df = df.sort_values("x")
 
     return sort_df
