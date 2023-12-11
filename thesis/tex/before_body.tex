@@ -69,21 +69,19 @@ December, 2023 \\
 
 This thesis explores variational inference as a viable alternative tool for 
 tackling Bayesian inference problems, 
-allowing for the approximation of posterior distributions through optimization. 
+allowing the approximation of posterior distributions by optimization. 
 We study "black box" variational inference, in Bayesian semiparametric distributional regression models,
 a method enabling inference in numerous probabilistic models without requiring model-specific derivations.
 The "black box" variational inference algorithm has been implemented in Python 
 within a software package consisting of a model building and inference library, 
-which leverage the framework of probabilistic graphical models.
-A simulation study shows that the implemented variational inference algorithm results in 
-consistent estimates when considering the posterior means of the model parameters. 
+which utilize the framework of probabilistic graphical models.
+A simulation study shows that the implemented variational inference algorithm yields generally 
+consistent estimators when considering the posterior means of the model parameters for common regression models. 
 Furthermore, the thesis conducts a simulation study to compare the posterior distributions 
-of Markov chain Monte Carlo and "black box" variational inference. It demonstrates that 
-the mean-field variational family over parameter blocks performs more effectively for certain blocks compared to others.
-Finally variational inference indicates, the ability to 
-approximate the posterior well even after a low number of optimization iterations. 
-This is in contrast to Markov Chain Monte Carlo methods, which usually require a 
-large number of sampling iterations to obtain a good approximation of the posterior.
+of Markov chain Monte Carlo with "black box" variational inference. It demonstrates that 
+the choosen mean-field variational family over parameter blocks obtains similar posterior distributions to those in MCMC.
+The implemented variational inference algorithm also shows the ability to solve inference in a
+Bayesian semiparametric distributional regression model faster than an implementation of Markov chain Monte Carlo. 
 
 \clearpage
 
@@ -114,6 +112,7 @@ large number of sampling iterations to obtain a good approximation of the poster
   SVI & Stochastic variational inference \\
   CAVI & Coordinate ascent variational inference \\
   SGD & Stochastic gradient descent \\
+  MAP & Maximum a posteriori \\
   API & Application programming interface \\
   JIT & Just-in-time compilation \\
   CPU & Central processing unit \\
@@ -124,6 +123,6 @@ large number of sampling iterations to obtain a good approximation of the poster
   EmpSE & Empirical standard error \\
   SE & Standard error \\
   DGP & Data generating process \\
-  IWLS & Iterated weighted least squares \\
   NUTS & No U-Turn sampler \\
+  VCM & Varying coefficient models \\
 \end{tabular}
