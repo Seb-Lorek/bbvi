@@ -154,7 +154,7 @@ def process_results(store_result_tiger: Tuple,
     return results
  
 # Define the model 
-def model_set_up(lib: str, data: Dict, response_dist: Any, key: jax.Array) -> tiger.ModelGraph:
+def model_set_up(lib: str, data: Dict, response_dist: Any, key: jax.Array):
     if lib == "tigerpy":
         if response_dist == "normal":
             # Set up design matrix 

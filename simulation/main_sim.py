@@ -8,6 +8,9 @@ import post_process.process_consistency as proc1
 import sim_fun.sim_post_dens as sim2
 import post_process.process_post_dens as proc2
 
+import sim_fun.sim_runtime as sim3
+import post_process.process_runtime as proc3
+
 import subprocess
 import os 
 import sys
@@ -194,12 +197,24 @@ if __name__ == "__main__":
 
     # Start simulation study 3 
     print("Start simulation study 3")
-
     start_time = time.time()
 
-    # TBA
+    key = jax.random.PRNGKey(896992974)
+    n_sim = 10
+    
+    results3 = sim3.sim_fun(n_sim, key)
 
-    # Track end time of simulation 1
+    # Create the full path to the file
+    filename = "sim3_raw.pickle"
+    full_filepath = os.path.join(folder_path, filename)
+
+    # Export the object using pickle
+    with open(full_filepath, "wb") as file:
+        pickle.dump(results3, file)
+
+    proc3.create_latex_table(results3)
+
+    # Track end time of simulation 3
     end_time = time.time()
     time_elapsed = end_time - start_time 
-    print(f"Time elapsed for simulation 1 n_obs={n_obs}:{time_elapsed/60:.2f} minutes")
+    print(f"Time elapsed for simulation 3 n_sim={n_sim}:{time_elapsed/60:.2f} minutes")

@@ -13,8 +13,9 @@ ADEMP is an acronym for:
 
 ## Aims
 
-- Illustrate the effectiveness of the BBVI algorithm by establishing that the parameters converge in a mean-square fashion to their true values within a frequentist context, for Bayesian linear regression and Bayesian logistic regression
-- Compare the posterior distributions of BBVI and MCMC
+- Illustrate the effectiveness of the BBVI algorithm by establishing that the posterior means are consistent, i.e. they converge to the true estimands, for Bayesian linear regression and Bayesian logistic regression
+- Furthermore compare convergence of BBVI and MCMC
+- Compare the posterior distributions of BBVI and MCMC, over blocks of parameters
 - Assess the comparative accuracy of BBVI and MCMC in approximating the posterior distribution over a predefined time window/iterations. This analysis will focus on location-scale regression, incorporating additive linear predictors
 
 ## Data generating mechanism 
@@ -27,7 +28,7 @@ ADEMP is an acronym for:
 
 ## Estimand/target of analysis 
 
-- Start targeting estimands in the linear predictor specifications
+- Start targeting fixed coefficients in the linear predictor specifications (estimands)
 - Then we target the posterior distributions of MCMC and BBVI (other targets)
 - After that the comparative accuracy over iterations
 

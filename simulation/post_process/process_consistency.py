@@ -1,5 +1,5 @@
 """
-Process the results from the simulation to obtain the targets.
+Process the results from the consistency simulation to obtain the targets.
 """
 
 import sys

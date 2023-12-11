@@ -1,5 +1,5 @@
 """
-Process the results from the simulation to obtain the targets.
+Process the results from the posterior density simulation to obtain the targets.
 """
 
 import jax
