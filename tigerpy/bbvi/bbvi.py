@@ -284,6 +284,7 @@ class Bbvi:
             samples (Dict): The parameters of the model, can be batches.
             data (Dict): A subsample of the data.
             num_obs (int): Number of observations in the model.
+            
         Returns:
             jax.Array: Monte Carlo integral for the noisy log-probability of the model. We only use a subsample
             of the data.
@@ -371,6 +372,18 @@ class Bbvi:
                     data: Dict,
                     num_obs: int,
                     samples_noise: Dict) -> Array:
+        """
+        Method to calculate the negative ELBO.
+
+        Args:
+            var_params (Dict): Dictionary holding the variational parameters.
+            data (Dict): Dictionary that contains the data.
+            num_obs (int): Number of observations in the model.
+            samples_noise (Dict): Noise samples used to evaluate the integral in the ELBO.
+
+        Returns:
+            Array: The negative ELBO.
+        """
 
         samples_params = {}
         total_neg_entropy = jnp.array([])
@@ -398,7 +411,7 @@ class Bbvi:
 
     # Update Docstrings 
     def run_bbvi(self,
-                 key: jax.random.PRNGKey,
+                 key: jax.Array,
                  learning_rate: Union[Any, float]=1e-3,
                  pre_train_learning_rate: float=1e-3,
                  grad_clip: float=1,
@@ -409,10 +422,24 @@ class Bbvi:
                  train_share: float=0.8,
                  num_var_samples=32,
                  chunk_size: int=1,
-                 epochs: int=500) -> tuple:
+                 epochs: int=50) -> None:
         """
         Method to run the stochastic gradient optimization algorithm. 
         The implementation uses Adam.
+
+        Args:
+            key (jax.Array): Starting key for random number generation in JAX.
+            learning_rate (Union[Any, float], optional): Learning rate for Adam in the ELBO optimization. Defaults to 1e-3.
+            pre_train_learning_rate (float, optional): Learning rate for Adam in pre-training. Defaults to 1e-3.
+            grad_clip (float, optional): Value that determines the gradient clipping value. Defaults to 1.
+            threshold (float, optional): Early stopping threshold. Defaults to 0.1.
+            pre_train_threshold (float, optional): Stopping threshold for the pre-training. Defaults to 0.1.
+            batch_size (int, optional): Batch size for stochastic gradient descent. Defaults to 64.
+            pre_train_batch_size (int, optional): Batch size for stochastic gradient descent in the pre-training. Defaults to 64.
+            train_share (float, optional): Share of data used for training. Defaults to 0.8.
+            num_var_samples (int, optional): Number of samples to evaluate the Monte Carlo integral. Defaults to 32.
+            chunk_size (int, optional): Chunks to be evaluated in the jax.lax.scan function. Defaults to 1.
+            epochs (int, optional): Number of total epochs. Defaults to 50.
         """
         key, subkey = jax.random.split(key)
         self.post_samples_key = subkey
@@ -491,15 +518,11 @@ class Bbvi:
                                               len(batches), 
                                               map_body, 
                                               map_state)
-                # print("Log-prob:", map_state.lprob_best)
-                # print("Vec-log-probs:", map_state.lprobs_full)
+
                 log_probs = jnp.append(log_probs, map_state.lprob_best)
-               
                 delta =  map_state.lprobs_full[-1] -  map_state.lprobs_full[-2]
-                # print("Delta:", abs(delta))
                 j += 1
-            # print("params best:", map_state.params_best)
-            # print("Lprob-best:", map_state.lprob_best)
+
             H = hessian(self.logprob, argnums=0)(map_state.params_best, 
                                                  map_state.data, 
                                                  map_state.num_obs)
@@ -818,6 +841,15 @@ class Bbvi:
 
     def get_posterior_samples(self, 
                               sample_shape: Tuple) -> Dict[str, jax.Array]:
+        """
+        Method to obtain posterior samples from the variational distribution.
+
+        Args:
+            sample_shape (Tuple): Number of samples to be returned.
+
+        Returns:
+            Dict[str, jax.Array]: A dictionary holding the samples from the posterior for each parameter in the model.
+        """
         post_sample = {}
         key = self.post_samples_key
         for kw in self.var_params:

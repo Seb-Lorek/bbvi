@@ -86,7 +86,8 @@ class ModelGraph:
         """
 
         attr = {"value": lpred.value,
-                 "function": lpred.function}
+                "order": list(lpred.kwinputs.keys()),
+                "function": lpred.function}
         self.digraph.add_node(name, attr=attr)
         self.digraph.nodes[name]["node_type"] = "lpred"
         self.digraph.nodes[name]["input"] = {}
@@ -218,7 +219,8 @@ class ModelGraph:
         function = attr["function"]
         design_matrix = self.digraph.nodes[node]["input"]["fixed"]
         input_pass = self.digraph.nodes[node]["input"]
-        values_params = jnp.concatenate([item for key, item in input_pass.items() if key != "fixed"], axis=-1)
+        order = attr["order"]
+        values_params = jnp.concatenate([input_pass[kw] for kw in order], axis=-1)
         nu = jnp.dot(design_matrix, values_params)
 
         if function is not None:
@@ -522,7 +524,7 @@ class ModelGraph:
         for node in self.digraph.nodes:
             self.digraph.nodes[node]["label"] = f"{node}"
 
-        fig, ax = plt.subplots(figsize=(10, 8))
+        fig, ax = plt.subplots()
         ax.set_title("Model Graph")
         ax.set_axis_off()
 
@@ -537,7 +539,7 @@ class ModelGraph:
 
         def calculate_font_size(graph, base_font_size = 12):
             num_nodes = len(graph.nodes)
-            scaling_factor = 0.25 
+            scaling_factor = 0.3 
             return round(base_font_size - scaling_factor * num_nodes)
         
         def calculate_node_size(graph):
